@@ -1,0 +1,13 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Устанавливаем VITE_API_URL на этапе сборки через Netlify env vars
+# Добавь в Netlify: Site Settings → Environment Variables:
+#   VITE_API_URL = https://dl.memoryai.club
+
+# SPA fallback — все маршруты отдают index.html
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
