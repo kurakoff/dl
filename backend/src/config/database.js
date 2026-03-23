@@ -24,8 +24,8 @@ function initDb() {
   database.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      google_id   TEXT UNIQUE NOT NULL,
-      email       TEXT NOT NULL,
+      google_id   TEXT UNIQUE,
+      email       TEXT UNIQUE NOT NULL,
       name        TEXT,
       picture     TEXT,
       created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -54,7 +54,58 @@ function initDb() {
       FOREIGN KEY (connected_account_id) REFERENCES connected_accounts(id) ON DELETE CASCADE,
       UNIQUE(connected_account_id, site_url)
     );
+
+    CREATE TABLE IF NOT EXISTS dashboards (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL,
+      name       TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS dashboard_sites (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      dashboard_id         INTEGER NOT NULL,
+      connected_account_id INTEGER NOT NULL,
+      site_url             TEXT NOT NULL,
+      FOREIGN KEY (dashboard_id) REFERENCES dashboards(id) ON DELETE CASCADE,
+      UNIQUE(dashboard_id, connected_account_id, site_url)
+    );
+
+    CREATE TABLE IF NOT EXISTS email_otps (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      email      TEXT NOT NULL,
+      code       TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used       INTEGER DEFAULT 0
+    );
   `);
+
+  // Migration: make google_id nullable and email unique in users table
+  try {
+    const cols = database.prepare('PRAGMA table_info(users)').all();
+    const googleIdCol = cols.find(c => c.name === 'google_id');
+    if (googleIdCol && googleIdCol.notnull === 1) {
+      database.pragma('foreign_keys = OFF');
+      database.exec(`
+        CREATE TABLE users_new (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          google_id   TEXT UNIQUE,
+          email       TEXT UNIQUE NOT NULL,
+          name        TEXT,
+          picture     TEXT,
+          created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT OR IGNORE INTO users_new SELECT id, google_id, email, name, picture, created_at FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_new RENAME TO users;
+      `);
+      database.pragma('foreign_keys = ON');
+      console.log('Migration: users.google_id is now nullable, email is unique');
+    }
+  } catch (err) {
+    console.error('Migration error:', err.message);
+  }
 
   console.log('Database initialized at', DB_PATH);
 }

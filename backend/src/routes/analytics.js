@@ -77,4 +77,55 @@ router.get('/', async (req, res) => {
   res.json({ results, startDate: start, endDate: end });
 });
 
+// GET /api/analytics/site-detail?accountId=&siteUrl=&startDate=&endDate=&dimension=
+// dimension: query | page | country | device
+router.get('/site-detail', async (req, res) => {
+  const { accountId, siteUrl, startDate, endDate, dimension } = req.query;
+  if (!accountId || !siteUrl || !dimension) return res.status(400).json({ error: 'Missing params' });
+
+  const db      = getDb();
+  const account = db.prepare(
+    'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ?'
+  ).get(accountId, req.userId);
+
+  if (!account) return res.status(403).json({ error: 'Account not found' });
+
+  let client;
+  try {
+    client = await getClientForAccount(account);
+  } catch (err) {
+    return res.status(401).json({ error: 'Token refresh failed' });
+  }
+
+  const sc = google.searchconsole({ version: 'v1', auth: client });
+
+  const LIMITS = { query: 25, page: 25, country: 30, device: 10 };
+
+  try {
+    const { data } = await sc.searchanalytics.query({
+      siteUrl,
+      requestBody: {
+        startDate:  startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10),
+        endDate:    endDate   || new Date().toISOString().slice(0, 10),
+        dimensions: [dimension],
+        rowLimit:   LIMITS[dimension] || 25,
+        orderBy:    [{ fieldName: 'clicks', sortOrder: 'DESCENDING' }],
+      },
+    });
+
+    const rows = (data.rows || []).map(row => ({
+      key:         row.keys[0],
+      clicks:      row.clicks,
+      impressions: row.impressions,
+      ctr:         Math.round(row.ctr * 10000) / 100,
+      position:    Math.round(row.position * 10) / 10,
+    }));
+
+    res.json({ rows });
+  } catch (err) {
+    console.error(`site-detail error [${dimension}] ${siteUrl}:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

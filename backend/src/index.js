@@ -35,8 +35,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/auth',          authRoutes);
-app.use('/api/accounts',  accountsRouter);
-app.use('/api/analytics', analyticsRoutes);
+app.use('/auth/email',      require('./routes/emailAuth'));
+app.use('/api/accounts',   accountsRouter);
+app.use('/api/analytics',  analyticsRoutes);
+app.use('/api/dashboards', require('./routes/dashboards'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 

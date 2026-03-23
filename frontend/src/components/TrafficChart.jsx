@@ -78,7 +78,7 @@ function GscTooltip({ active, payload, label, metric }) {
   );
 }
 
-export default function TrafficChart({ site }) {
+export default function TrafficChart({ site, onDetailClick }) {
   const [metric, setMetric] = useState('clicks');
   if (!site) return null;
 
@@ -115,10 +115,25 @@ export default function TrafficChart({ site }) {
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Site header */}
       <div className="px-5 pt-4 pb-0 border-b border-gray-100">
-        <p className="text-sm font-semibold text-gray-800 mb-3">
-          {shortUrl(site.siteUrl)}
-          <span className="ml-2 text-xs font-normal text-gray-400">{site.accountEmail}</span>
-        </p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-gray-800 truncate">
+            {shortUrl(site.siteUrl)}
+            <span className="ml-2 text-xs font-normal text-gray-400">{site.accountEmail}</span>
+          </p>
+          {onDetailClick && (
+            <button
+              onClick={() => onDetailClick(site)}
+              className="flex-shrink-0 ml-2 flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition"
+              title="View details"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Details
+            </button>
+          )}
+        </div>
 
         {/* GSC-style stat pills */}
         <div className="flex gap-1 overflow-x-auto">

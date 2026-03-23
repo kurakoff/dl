@@ -10,6 +10,7 @@ export default function SiteSelector({ accountId, initialSelected, onSelectionCh
   const [selected, setSelected] = useState(new Set(initialSelected || []));
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState('');
+  const [search,   setSearch]   = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -56,9 +57,24 @@ export default function SiteSelector({ accountId, initialSelected, onSelectionCh
     return <div className="py-2 px-4 text-sm text-gray-400">No sites found in Search Console.</div>;
   }
 
+  const filtered = sites.filter(s =>
+    shortUrl(s.url).toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
+    <div>
+      {sites.length > 4 && (
+        <div className="px-4 pt-2 pb-1">
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search sites…"
+            className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+          />
+        </div>
+      )}
     <ul className="py-1">
-      {sites.map(site => (
+      {filtered.map(site => (
         <li key={site.url}>
           <label className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 cursor-pointer group">
             <input
@@ -77,5 +93,9 @@ export default function SiteSelector({ accountId, initialSelected, onSelectionCh
         </li>
       ))}
     </ul>
+    {search && filtered.length === 0 && (
+      <p className="px-4 py-2 text-xs text-gray-400">No matches.</p>
+    )}
+    </div>
   );
 }
