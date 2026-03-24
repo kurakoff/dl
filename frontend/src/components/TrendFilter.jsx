@@ -233,6 +233,10 @@ export default function TrendFilter({ value, onChange }) {
               </div>
             </div>
 
+            <p className="text-xs text-gray-400 mb-3 leading-relaxed">
+              Compares the start and end of the selected period with additional statistical validation.
+            </p>
+
             <button
               onClick={apply}
               disabled={draftTrends.length === 0}

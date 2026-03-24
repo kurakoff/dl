@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import SiteSelector from './SiteSelector';
 
-export default function AccountCard({ account, onDisconnect, onSelectionChange }) {
+export default function AccountCard({ account, onDisconnect, onSelectionChange, activeDashboard, onDashboardSiteToggle, onDashboardBatchToggle }) {
   const [expanded,    setExpanded]    = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
 
@@ -63,13 +63,19 @@ export default function AccountCard({ account, onDisconnect, onSelectionChange }
       </div>
 
       {/* Selected sites badge */}
-      {!expanded && account.selected_sites?.length > 0 && (
-        <div className="px-4 pb-3">
-          <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-            {account.selected_sites.length} site{account.selected_sites.length > 1 ? 's' : ''} selected
-          </span>
-        </div>
-      )}
+      {!expanded && (() => {
+        const count = activeDashboard
+          ? activeDashboard.sites.filter(s => String(s.connected_account_id) === String(account.id)).length
+          : (account.selected_sites?.length ?? 0);
+        if (count === 0) return null;
+        return (
+          <div className="px-4 pb-3">
+            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+              {count} site{count !== 1 ? 's' : ''} {activeDashboard ? 'in dashboard' : 'selected'}
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Site selector (lazy-loaded when expanded) */}
       {expanded && (
@@ -78,6 +84,9 @@ export default function AccountCard({ account, onDisconnect, onSelectionChange }
             accountId={account.id}
             initialSelected={account.selected_sites}
             onSelectionChange={onSelectionChange}
+            activeDashboard={activeDashboard}
+            onDashboardSiteToggle={onDashboardSiteToggle}
+            onDashboardBatchToggle={onDashboardBatchToggle}
           />
         </div>
       )}

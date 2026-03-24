@@ -66,6 +66,7 @@ router.delete('/:id', (req, res) => {
 
   if (!account) return res.status(404).json({ error: 'Account not found' });
 
+  db.prepare('DELETE FROM dashboard_sites WHERE connected_account_id = ?').run(req.params.id);
   db.prepare('DELETE FROM connected_accounts WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
@@ -127,6 +128,32 @@ router.post('/:id/sites/toggle', (req, res) => {
     ).run(account.id, siteUrl);
     res.json({ selected: true });
   }
+});
+
+// POST /api/accounts/:id/sites/batch-select  — add or remove multiple sites at once
+router.post('/:id/sites/batch-select', (req, res) => {
+  const { siteUrls, selected } = req.body;
+  if (!Array.isArray(siteUrls)) return res.status(400).json({ error: 'siteUrls must be an array' });
+
+  const db = getDb();
+  const account = db.prepare(
+    'SELECT id FROM connected_accounts WHERE id = ? AND user_id = ?'
+  ).get(req.params.id, req.userId);
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+
+  if (selected) {
+    const ins = db.prepare('INSERT OR IGNORE INTO selected_sites (connected_account_id, site_url) VALUES (?, ?)');
+    for (const url of siteUrls) ins.run(account.id, url);
+  } else {
+    const del = db.prepare('DELETE FROM selected_sites WHERE connected_account_id = ? AND site_url = ?');
+    for (const url of siteUrls) del.run(account.id, url);
+  }
+
+  const newSelected = db.prepare(
+    'SELECT site_url FROM selected_sites WHERE connected_account_id = ?'
+  ).all(account.id).map(r => r.site_url);
+
+  res.json({ selectedSites: newSelected });
 });
 
 module.exports = { router, getClientForAccount };

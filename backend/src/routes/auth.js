@@ -183,6 +183,26 @@ router.get('/add-account/callback', async (req, res) => {
       tokens.access_token, tokens.refresh_token || null, tokens.expiry_date || null
     );
 
+    // Auto-select all Search Console sites for the new account
+    try {
+      const account = db.prepare(
+        'SELECT id FROM connected_accounts WHERE user_id = ? AND google_id = ?'
+      ).get(stateData.userId, info.id);
+
+      const sc = google.searchconsole({ version: 'v1', auth: client });
+      const sitesRes = await sc.sites.list();
+      const sites = sitesRes.data.siteEntry || [];
+
+      const insertSite = db.prepare(
+        'INSERT OR IGNORE INTO selected_sites (connected_account_id, site_url) VALUES (?, ?)'
+      );
+      for (const site of sites) {
+        insertSite.run(account.id, site.siteUrl);
+      }
+    } catch (err) {
+      console.error('Auto-select sites failed (non-critical):', err.message);
+    }
+
     res.redirect(`${frontendUrl}/dashboard?account_added=true`);
   } catch (err) {
     console.error('Add-account callback error:', err);

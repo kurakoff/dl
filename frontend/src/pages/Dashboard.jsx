@@ -35,12 +35,12 @@ export default function Dashboard() {
   const [formMode,          setFormMode]          = useState('create');
   const [editingId,         setEditingId]         = useState(null);
   const [formName,          setFormName]          = useState('');
-  const [formSites,         setFormSites]         = useState([]);
-  const [formSiteSearch,    setFormSiteSearch]    = useState('');
   const [siteSearch,        setSiteSearch]        = useState('');
   const [metricFilters,     setMetricFilters]     = useState([]);
   const [trendFilter,       setTrendFilter]       = useState({ trends: [], metric: 'clicks' });
   const [detailSite,        setDetailSite]        = useState(null);
+  const [sidebarCollapsed,  setSidebarCollapsed]  = useState(false);
+  const [granularity,       setGranularity]       = useState('day');
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -72,49 +72,68 @@ export default function Dashboard() {
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
   // ── Dashboard CRUD ────────────────────────────────────────────────────────
-  const allSelectableSites = accounts.flatMap(acc =>
-    (acc.selected_sites || []).map(url => ({
-      siteUrl: url,
-      connectedAccountId: acc.id,
-      accountEmail: acc.email,
-    }))
-  );
-
   const openCreateForm = () => {
-    setFormMode('create'); setFormName(''); setFormSites([]);
-    setEditingId(null); setShowForm(true); setFormSiteSearch('');
+    setFormMode('create'); setFormName('');
+    setEditingId(null); setShowForm(true);
+    setSidebarCollapsed(false);
   };
 
   const openEditForm = (d) => {
     setFormMode('edit'); setFormName(d.name);
-    setFormSites(d.sites); setEditingId(d.id); setShowForm(true); setFormSiteSearch('');
-  };
-
-  const toggleFormSite = (connectedAccountId, siteUrl) => {
-    const key = `${connectedAccountId}:${siteUrl}`;
-    setFormSites(prev => {
-      const exists = prev.some(s => `${s.connected_account_id}:${s.site_url}` === key);
-      return exists
-        ? prev.filter(s => `${s.connected_account_id}:${s.site_url}` !== key)
-        : [...prev, { connected_account_id: connectedAccountId, site_url: siteUrl }];
-    });
+    setEditingId(d.id); setShowForm(true);
   };
 
   const handleSaveDashboard = async () => {
     if (!formName.trim()) return;
-    const body = { name: formName.trim(), sites: formSites };
     try {
       if (formMode === 'create') {
-        const res = await api.post('/api/dashboards', body);
+        const res = await api.post('/api/dashboards', { name: formName.trim(), sites: [] });
         setDashboards(prev => [...prev, res.data]);
         setActiveDashboardId(res.data.id);
       } else {
-        const res = await api.put(`/api/dashboards/${editingId}`, body);
+        const db = dashboards.find(d => d.id === editingId);
+        const res = await api.put(`/api/dashboards/${editingId}`, { name: formName.trim(), sites: db?.sites || [] });
         setDashboards(prev => prev.map(d => d.id === editingId ? res.data : d));
       }
       setShowForm(false);
     } catch { showToast('Error saving dashboard'); }
   };
+
+  // Batch add/remove all sites of an account to/from the active dashboard
+  const handleDashboardBatchToggle = useCallback(async (connectedAccountId, siteUrls, shouldBeIn) => {
+    if (!activeDashboardId) return;
+    const db = dashboards.find(d => d.id === activeDashboardId);
+    if (!db) return;
+    let newSites = [...db.sites];
+    for (const siteUrl of siteUrls) {
+      const key = `${connectedAccountId}:${siteUrl}`;
+      const isIn = newSites.some(s => `${s.connected_account_id}:${s.site_url}` === key);
+      if (shouldBeIn && !isIn)  newSites.push({ connected_account_id: connectedAccountId, site_url: siteUrl });
+      if (!shouldBeIn && isIn)  newSites = newSites.filter(s => `${s.connected_account_id}:${s.site_url}` !== key);
+    }
+    try {
+      const res = await api.put(`/api/dashboards/${activeDashboardId}`, { name: db.name, sites: newSites });
+      setDashboards(prev => prev.map(d => d.id === activeDashboardId ? res.data : d));
+      fetchAnalytics();
+    } catch { showToast('Error updating dashboard'); }
+  }, [activeDashboardId, dashboards, fetchAnalytics]);
+
+  // Toggle a site in/out of the active dashboard (called from SiteSelector)
+  const handleDashboardSiteToggle = useCallback(async (connectedAccountId, siteUrl) => {
+    if (!activeDashboardId) return;
+    const db = dashboards.find(d => d.id === activeDashboardId);
+    if (!db) return;
+    const key = `${connectedAccountId}:${siteUrl}`;
+    const isIn = db.sites.some(s => `${s.connected_account_id}:${s.site_url}` === key);
+    const newSites = isIn
+      ? db.sites.filter(s => `${s.connected_account_id}:${s.site_url}` !== key)
+      : [...db.sites, { connected_account_id: connectedAccountId, site_url: siteUrl }];
+    try {
+      const res = await api.put(`/api/dashboards/${activeDashboardId}`, { name: db.name, sites: newSites });
+      setDashboards(prev => prev.map(d => d.id === activeDashboardId ? res.data : d));
+      fetchAnalytics();
+    } catch { showToast('Error updating dashboard'); }
+  }, [activeDashboardId, dashboards, fetchAnalytics]);
 
   const handleDeleteDashboard = async (id) => {
     await api.delete(`/api/dashboards/${id}`);
@@ -136,8 +155,11 @@ export default function Dashboard() {
   };
 
   const handleSelectionChange = useCallback(() => {
-    setTimeout(fetchAnalytics, 300);
-  }, [fetchAnalytics]);
+    setTimeout(() => {
+      fetchAccounts();
+      fetchAnalytics();
+    }, 300);
+  }, [fetchAccounts, fetchAnalytics]);
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
@@ -150,10 +172,13 @@ export default function Dashboard() {
         const db = dashboards.find(d => d.id === activeDashboardId);
         if (!db) return analytics;
         return analytics.filter(a =>
-          db.sites.some(s => s.connected_account_id === a.accountId && s.site_url === a.siteUrl)
+          db.sites.some(s => String(s.connected_account_id) === String(a.accountId) && s.site_url === a.siteUrl)
         );
       })()
-    : analytics;
+    : analytics.filter(a => {
+        const acc = accounts.find(ac => String(ac.id) === String(a.accountId));
+        return acc?.selected_sites?.includes(a.siteUrl) ?? false;
+      });
 
   const searchedAnalytics = applyTrendFilter(
     applyMetricFilters(
@@ -178,215 +203,218 @@ export default function Dashboard() {
     <div className="flex h-screen overflow-hidden bg-gray-50">
 
       {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
-      <aside className="w-72 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+      <aside className={`${sidebarCollapsed ? 'w-14' : 'w-72'} bg-white border-r border-gray-200 flex flex-col overflow-hidden flex-shrink-0 transition-all duration-200`}>
 
-        {/* Logo */}
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
+        {/* ── Logo + collapse toggle ─────────────────────────────────────── */}
+        <div className={`flex items-center border-b border-gray-100 flex-shrink-0 ${sidebarCollapsed ? 'justify-center py-3.5 px-0' : 'gap-2 px-4 py-3.5 justify-between'}`}>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            {!sidebarCollapsed && <span className="font-semibold text-gray-800 truncate">SEO Dashboard</span>}
           </div>
-          <span className="font-semibold text-gray-800">SEO Dashboard</span>
+          <button
+            onClick={() => setSidebarCollapsed(c => !c)}
+            className={`text-gray-300 hover:text-gray-600 transition flex-shrink-0 ${sidebarCollapsed ? 'mt-1' : ''}`}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d={sidebarCollapsed ? 'M9 5l7 7-7 7' : 'M15 19l-7-7 7-7'} />
+            </svg>
+          </button>
         </div>
 
-        {/* User info */}
-        {user && (
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-shrink-0">
-            {user.picture ? (
-              <img src={user.picture} alt="" className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-semibold text-blue-600">
-                {user.email[0].toUpperCase()}
+        {sidebarCollapsed ? (
+          /* ── Collapsed mode ────────────────────────────────────────────── */
+          <>
+            <div className="flex-1 overflow-y-auto py-2 flex flex-col items-center gap-1 px-1.5">
+              {/* User avatar */}
+              {user && (
+                <div title={user.email} className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 mb-1">
+                  {user.picture
+                    ? <img src={user.picture} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    : <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-sm font-semibold text-blue-600">{user.email[0].toUpperCase()}</div>
+                  }
+                </div>
+              )}
+              <div className="w-6 h-px bg-gray-100" />
+              {/* All sites */}
+              <button onClick={() => setActiveDashboardId(null)} title="All sites"
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition ${!activeDashboardId ? 'bg-blue-50 text-blue-600' : 'text-gray-400 hover:bg-gray-50'}`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+              </button>
+              {/* Dashboard buttons */}
+              {dashboards.map(d => (
+                <button key={d.id} onClick={() => { setActiveDashboardId(d.id); setShowForm(false); }} title={d.name}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold transition ${activeDashboardId === d.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                >
+                  {d.name.slice(0, 2).toUpperCase()}
+                </button>
+              ))}
+              {/* Add dashboard */}
+              <button onClick={openCreateForm} title="New dashboard"
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-50 transition text-xl font-light"
+              >+</button>
+              <div className="w-6 h-px bg-gray-100 my-0.5" />
+              {/* Account avatars */}
+              {accounts.map(acc => (
+                <div key={acc.id} title={acc.email} className="w-9 h-9 rounded-full flex-shrink-0 overflow-hidden">
+                  {acc.picture
+                    ? <img src={acc.picture} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    : <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-sm font-semibold text-blue-600">{acc.email[0].toUpperCase()}</div>
+                  }
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-gray-100 py-2 flex justify-center">
+              <button onClick={handleLogout} title="Logout" className="p-2 text-gray-300 hover:text-red-400 transition">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
+          </>
+        ) : (
+          /* ── Expanded mode ─────────────────────────────────────────────── */
+          <>
+            {/* User info */}
+            {user && (
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-shrink-0">
+                {user.picture
+                  ? <img src={user.picture} alt="" className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
+                  : <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-semibold text-blue-600">{user.email[0].toUpperCase()}</div>
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{user.name || user.email}</p>
+                  <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                </div>
+                <button onClick={handleLogout} className="text-gray-300 hover:text-red-400 transition p-1" title="Logout">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </button>
               </div>
             )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{user.name || user.email}</p>
-              <p className="text-xs text-gray-400 truncate">{user.email}</p>
-            </div>
-            <button onClick={handleLogout} className="text-gray-300 hover:text-red-400 transition p-1" title="Logout">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-            </button>
-          </div>
-        )}
 
-        {/* Scrollable area */}
-        <div className="flex-1 overflow-y-auto">
+            {/* Scrollable area */}
+            <div className="flex-1 overflow-y-auto">
 
-          {/* ── Dashboards ──────────────────────────────────────────────── */}
-          <div className="p-4 border-b border-gray-100">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Dashboards</h2>
-              {!showForm && (
+              {/* ── Dashboards ────────────────────────────────────────── */}
+              <div className="p-4 border-b border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Dashboards</h2>
+                  {!showForm && (
+                    <button onClick={openCreateForm} className="text-gray-400 hover:text-blue-500 transition p-0.5" title="New dashboard">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                {/* All sites */}
                 <button
-                  onClick={openCreateForm}
-                  className="text-gray-400 hover:text-blue-500 transition p-0.5"
-                  title="New dashboard"
+                  onClick={() => { setActiveDashboardId(null); setShowForm(false); }}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-sm mb-1 transition ${!activeDashboardId ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
+                  All sites
+                </button>
+
+                {/* Dashboard list */}
+                {dashboards.map(d => (
+                  <div key={d.id} className="flex items-center gap-0.5 group mb-0.5">
+                    <button
+                      onClick={() => { setActiveDashboardId(d.id); setShowForm(false); }}
+                      className={`flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-lg text-sm transition min-w-0 text-left ${activeDashboardId === d.id ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <span className="truncate flex-1">{d.name}</span>
+                      <span className="text-xs opacity-40 flex-shrink-0 ml-2">{d.sites.length}</span>
+                    </button>
+                    <button onClick={() => openEditForm(d)} title="Rename"
+                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-gray-500 transition flex-shrink-0">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button onClick={() => handleDeleteDashboard(d.id)} title="Delete"
+                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-400 transition flex-shrink-0">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+
+                {/* Create / Edit form */}
+                {showForm && (
+                  <div className="mt-2 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">
+                      {formMode === 'create' ? 'New dashboard' : 'Rename dashboard'}
+                    </p>
+                    <input
+                      value={formName}
+                      onChange={e => setFormName(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleSaveDashboard()}
+                      placeholder="Name…"
+                      autoFocus
+                      className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 mb-2 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={handleSaveDashboard} disabled={!formName.trim()}
+                        className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-1.5 font-medium hover:bg-blue-700 disabled:opacity-40 transition">
+                        {formMode === 'create' ? 'Create' : 'Save'}
+                      </button>
+                      <button onClick={() => setShowForm(false)}
+                        className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-100 transition">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Connected Accounts ────────────────────────────────── */}
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Connected Accounts</h2>
+                  <span className="text-xs text-gray-400">{accounts.length}</span>
+                </div>
+                <button onClick={handleAddAccount}
+                  className="w-full flex items-center justify-center gap-2 mb-2 px-4 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-blue-300 hover:text-blue-600 transition">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
+                  Add Google Account
                 </button>
-              )}
-            </div>
-
-            {/* All */}
-            <button
-              onClick={() => { setActiveDashboardId(null); setShowForm(false); }}
-              className={`w-full text-left px-2.5 py-1.5 rounded-lg text-sm mb-1 transition ${
-                !activeDashboardId ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              All sites
-            </button>
-
-            {/* Dashboard list */}
-            {dashboards.map(d => (
-              <div key={d.id} className="flex items-center gap-0.5 group mb-0.5">
-                <button
-                  onClick={() => { setActiveDashboardId(d.id); setShowForm(false); }}
-                  className={`flex-1 text-left px-2.5 py-1.5 rounded-lg text-sm truncate transition ${
-                    activeDashboardId === d.id ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  {d.name}
-                  <span className="ml-1 text-xs opacity-50">{d.sites.length}</span>
-                </button>
-                <button
-                  onClick={() => openEditForm(d)}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-gray-500 transition flex-shrink-0"
-                  title="Edit"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => handleDeleteDashboard(d.id)}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-400 transition flex-shrink-0"
-                  title="Delete"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-
-            {/* Create / Edit form */}
-            {showForm && (
-              <div className="mt-2 p-3 bg-gray-50 rounded-xl border border-gray-200">
-                <p className="text-xs font-semibold text-gray-500 mb-2">
-                  {formMode === 'create' ? 'New dashboard' : 'Edit dashboard'}
-                </p>
-                <input
-                  value={formName}
-                  onChange={e => setFormName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSaveDashboard()}
-                  placeholder="Name..."
-                  autoFocus
-                  className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 mb-2 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
-                />
-
-                {allSelectableSites.length > 0 ? (
-                  <div className="mb-2">
-                    <input
-                      value={formSiteSearch}
-                      onChange={e => setFormSiteSearch(e.target.value)}
-                      placeholder="Search sites…"
-                      className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 mb-1.5 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
-                    />
-                  {allSelectableSites.filter(s =>
-                    shortUrl(s.siteUrl).toLowerCase().includes(formSiteSearch.toLowerCase())
-                  ).length === 0 && formSiteSearch && (
-                    <p className="text-xs text-gray-400 py-1">No sites found.</p>
-                  )}
-                  <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
-                    {allSelectableSites.filter(s =>
-                      shortUrl(s.siteUrl).toLowerCase().includes(formSiteSearch.toLowerCase())
-                    ).map(site => {
-                      const key = `${site.connectedAccountId}:${site.siteUrl}`;
-                      const checked = formSites.some(
-                        s => `${s.connected_account_id}:${s.site_url}` === key
-                      );
-                      return (
-                        <label key={key} className="flex items-center gap-2 cursor-pointer py-0.5">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleFormSite(site.connectedAccountId, site.siteUrl)}
-                            className="accent-blue-600 flex-shrink-0"
-                          />
-                          <span className="text-xs text-gray-600 truncate" title={site.siteUrl}>
-                            {shortUrl(site.siteUrl)}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-400 mb-2 leading-snug">
-                    Select sites from accounts below first.
-                  </p>
+                {accounts.length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-2">No accounts connected yet.</p>
                 )}
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSaveDashboard}
-                    disabled={!formName.trim()}
-                    className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-1.5 font-medium hover:bg-blue-700 disabled:opacity-40 transition"
-                  >
-                    {formMode === 'create' ? 'Create' : 'Save'}
-                  </button>
-                  <button
-                    onClick={() => setShowForm(false)}
-                    className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-100 transition"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                {accounts.map(acc => (
+                  <AccountCard
+                    key={acc.id}
+                    account={acc}
+                    onDisconnect={handleDisconnect}
+                    onSelectionChange={handleSelectionChange}
+                    activeDashboard={activeDashboardId ? dashboards.find(d => d.id === activeDashboardId) : null}
+                    onDashboardSiteToggle={handleDashboardSiteToggle}
+                    onDashboardBatchToggle={handleDashboardBatchToggle}
+                  />
+                ))}
               </div>
-            )}
-          </div>
-
-          {/* ── Connected Accounts ──────────────────────────────────────── */}
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Connected Accounts</h2>
-              <span className="text-xs text-gray-400">{accounts.length}</span>
             </div>
-
-            <button
-              onClick={handleAddAccount}
-              className="w-full flex items-center justify-center gap-2 mb-2 px-4 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-blue-300 hover:text-blue-600 transition"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Google Account
-            </button>
-
-            {accounts.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-2">No accounts connected yet.</p>
-            )}
-
-            {accounts.map(acc => (
-              <AccountCard
-                key={acc.id}
-                account={acc}
-                onDisconnect={handleDisconnect}
-                onSelectionChange={handleSelectionChange}
-              />
-            ))}
-          </div>
-        </div>
+          </>
+        )}
       </aside>
 
       {/* ── Main area ─────────────────────────────────────────────────────────── */}
@@ -399,6 +427,23 @@ export default function Dashboard() {
             endDate={endDate}
             onChange={(s, e) => { setStartDate(s); setEndDate(e); }}
           />
+
+          {/* Granularity picker */}
+          <div className="flex items-center bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            {[['D','day'],['W','week'],['M','month']].map(([label, val]) => (
+              <button
+                key={val}
+                onClick={() => setGranularity(val)}
+                className={`px-3 py-2 text-sm font-medium transition ${
+                  granularity === val
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
           {/* Site search */}
           <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
@@ -459,6 +504,7 @@ export default function Dashboard() {
                 key={site.siteUrl + site.accountId}
                 site={site}
                 onDetailClick={setDetailSite}
+                granularity={granularity}
               />
             ))}
           </div>

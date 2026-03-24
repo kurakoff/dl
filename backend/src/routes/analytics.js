@@ -21,9 +21,14 @@ router.get('/', async (req, res) => {
   const results = [];
 
   for (const account of accounts) {
+    // Union of selected_sites + all dashboard_sites for this account (across all user's dashboards)
     const selectedSites = db.prepare(
-      'SELECT site_url FROM selected_sites WHERE connected_account_id = ?'
-    ).all(account.id).map(r => r.site_url);
+      `SELECT site_url FROM selected_sites WHERE connected_account_id = ?
+       UNION
+       SELECT ds.site_url FROM dashboard_sites ds
+         JOIN dashboards d ON d.id = ds.dashboard_id
+         WHERE ds.connected_account_id = ? AND d.user_id = ?`
+    ).all(account.id, account.id, req.userId).map(r => r.site_url);
 
     if (!selectedSites.length) continue;
 

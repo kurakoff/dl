@@ -37,6 +37,52 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }
 
+function getGroupKey(dateStr, granularity) {
+  const d = new Date(dateStr);
+  if (granularity === 'week') {
+    // ISO week start (Monday)
+    const day = d.getDay() || 7;
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - day + 1);
+    return mon.toISOString().slice(0, 10);
+  }
+  if (granularity === 'month') return dateStr.slice(0, 7);       // "2026-03"
+  if (granularity === 'year')  return dateStr.slice(0, 4);       // "2026"
+  return dateStr;                                                  // "2026-03-24"
+}
+
+function formatGroupKey(key, granularity) {
+  if (granularity === 'month') {
+    const [y, m] = key.split('-');
+    return new Date(y, m - 1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+  }
+  if (granularity === 'year') return key;
+  return formatDate(key); // day or week — show as date
+}
+
+function aggregateData(rows, granularity) {
+  if (!granularity || granularity === 'day') return rows;
+  const groups = new Map();
+  for (const r of rows) {
+    const key = getGroupKey(r.date, granularity);
+    if (!groups.has(key)) groups.set(key, { date: key, clicks: 0, impressions: 0, position: 0, _days: 0 });
+    const g = groups.get(key);
+    g.clicks      += r.clicks      || 0;
+    g.impressions += r.impressions || 0;
+    g.position    += r.position    || 0;
+    g._days       += 1;
+  }
+  return [...groups.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(g => ({
+      date:        g.date,
+      clicks:      g.clicks,
+      impressions: g.impressions,
+      ctr:         g.impressions > 0 ? Math.round(g.clicks / g.impressions * 10000) / 100 : 0,
+      position:    g._days > 0 ? Math.round(g.position / g._days * 10) / 10 : 0,
+    }));
+}
+
 function formatVal(metric, v) {
   if (v == null) return '—';
   if (metric === 'ctr')      return `${v.toFixed(2)}%`;
@@ -65,12 +111,12 @@ function StatPill({ label, value, color, active, onClick }) {
 }
 
 // Custom tooltip — GSC-style
-function GscTooltip({ active, payload, label, metric }) {
+function GscTooltip({ active, payload, label, metric, granularity }) {
   if (!active || !payload?.length) return null;
   const val = payload[0]?.value;
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs">
-      <p className="text-gray-500 mb-1">{formatDate(label)}</p>
+      <p className="text-gray-500 mb-1">{formatGroupKey(label, granularity)}</p>
       <p className="font-semibold" style={{ color: METRIC_COLOR[metric] }}>
         {METRIC_LABEL[metric]}: {formatVal(metric, val)}
       </p>
@@ -78,13 +124,13 @@ function GscTooltip({ active, payload, label, metric }) {
   );
 }
 
-export default function TrafficChart({ site, onDetailClick }) {
+export default function TrafficChart({ site, onDetailClick, granularity = 'day' }) {
   const [metric, setMetric] = useState('clicks');
   if (!site) return null;
 
   const hasData = site.data?.length > 0;
 
-  const rows = site.data || [];
+  const rows = aggregateData(site.data || [], granularity);
   const n    = rows.length || 1;
 
   // Aggregate stats
@@ -108,8 +154,9 @@ export default function TrafficChart({ site, onDetailClick }) {
   const color = METRIC_COLOR[metric];
   const fill  = METRIC_FILL[metric];
 
-  // Chart data
-  const chartData = [...rows].sort((a, b) => a.date.localeCompare(b.date));
+  // Chart data (already aggregated and sorted)
+  const chartData = rows;
+  const xFormatter = (key) => formatGroupKey(key, granularity);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -176,7 +223,7 @@ export default function TrafficChart({ site, onDetailClick }) {
 
             <XAxis
               dataKey="date"
-              tickFormatter={formatDate}
+              tickFormatter={xFormatter}
               tick={{ fontSize: 11, fill: '#80868b' }}
               axisLine={false}
               tickLine={false}
@@ -191,7 +238,7 @@ export default function TrafficChart({ site, onDetailClick }) {
               width={40}
             />
 
-            <Tooltip content={<GscTooltip metric={metric} />} />
+            <Tooltip content={<GscTooltip metric={metric} granularity={granularity} />} />
 
             <Area
               type="monotone"
