@@ -35,3 +35,6 @@ frontend/*.zip
 
 # Claude Code settings
 .claude/
+
+# Local Netlify folder
+.netlify

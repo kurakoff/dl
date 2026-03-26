@@ -79,6 +79,14 @@ function initDb() {
       expires_at INTEGER NOT NULL,
       used       INTEGER DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS invite_tokens (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL UNIQUE,
+      token      TEXT UNIQUE NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   // Migration: make google_id nullable and email unique in users table

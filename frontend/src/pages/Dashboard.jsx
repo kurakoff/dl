@@ -41,6 +41,8 @@ export default function Dashboard() {
   const [detailSite,        setDetailSite]        = useState(null);
   const [sidebarCollapsed,  setSidebarCollapsed]  = useState(false);
   const [granularity,       setGranularity]       = useState('day');
+  const [inviteUrl,         setInviteUrl]         = useState('');
+  const [inviteCopied,      setInviteCopied]      = useState(false);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -69,6 +71,9 @@ export default function Dashboard() {
   }, [startDate, endDate]);
 
   useEffect(() => { fetchAccounts(); fetchDashboards(); }, [fetchAccounts, fetchDashboards]);
+  useEffect(() => {
+    api.post('/auth/invite-token').then(r => setInviteUrl(r.data.url)).catch(() => {});
+  }, []);
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
   // ── Dashboard CRUD ────────────────────────────────────────────────────────
@@ -307,6 +312,32 @@ export default function Dashboard() {
 
             {/* Scrollable area */}
             <div className="flex-1 overflow-y-auto">
+
+              {/* ── Invite Link ───────────────────────────────────────── */}
+              {inviteUrl && (
+                <div className="px-4 pt-3 pb-2 border-b border-gray-100">
+                  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Invite Link</h2>
+                  <div className="flex gap-1">
+                    <input
+                      readOnly
+                      value={inviteUrl}
+                      className="flex-1 min-w-0 text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 outline-none"
+                      onFocus={e => e.target.select()}
+                    />
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(inviteUrl);
+                        setInviteCopied(true);
+                        setTimeout(() => setInviteCopied(false), 2000);
+                      }}
+                      className="px-2 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex-shrink-0"
+                    >
+                      {inviteCopied ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-300 mt-1.5">Share to connect a Google account to your profile.</p>
+                </div>
+              )}
 
               {/* ── Dashboards ────────────────────────────────────────── */}
               <div className="p-4 border-b border-gray-100">
