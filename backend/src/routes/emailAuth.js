@@ -38,42 +38,47 @@ router.post('/send-otp', async (req, res) => {
 
 // POST /auth/email/verify-otp
 router.post('/verify-otp', (req, res) => {
-  const { email, code } = req.body;
-  if (!email || !code) {
-    return res.status(400).json({ error: 'email and code required' });
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ error: 'email and code required' });
+    }
+
+    const db = getDb();
+    const normalizedEmail = email.toLowerCase();
+
+    const otp = db.prepare(`
+      SELECT id FROM email_otps
+      WHERE email = ? AND code = ? AND used = 0 AND expires_at > ?
+      ORDER BY id DESC LIMIT 1
+    `).get(normalizedEmail, code, Date.now());
+
+    if (!otp) {
+      return res.status(401).json({ error: 'Invalid or expired code' });
+    }
+
+    db.prepare('UPDATE email_otps SET used = 1 WHERE id = ?').run(otp.id);
+
+    // Upsert user by email
+    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
+    if (!user) {
+      const result = db.prepare(
+        'INSERT INTO users (email, name) VALUES (?, ?)'
+      ).run(normalizedEmail, normalizedEmail.split('@')[0]);
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    res.json({ token });
+  } catch (err) {
+    console.error('verify-otp error:', err.message);
+    res.status(500).json({ error: err.message });
   }
-
-  const db = getDb();
-  const normalizedEmail = email.toLowerCase();
-
-  const otp = db.prepare(`
-    SELECT id FROM email_otps
-    WHERE email = ? AND code = ? AND used = 0 AND expires_at > ?
-    ORDER BY id DESC LIMIT 1
-  `).get(normalizedEmail, code, Date.now());
-
-  if (!otp) {
-    return res.status(401).json({ error: 'Invalid or expired code' });
-  }
-
-  db.prepare('UPDATE email_otps SET used = 1 WHERE id = ?').run(otp.id);
-
-  // Upsert user by email
-  let user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
-  if (!user) {
-    const result = db.prepare(
-      'INSERT INTO users (email, name) VALUES (?, ?)'
-    ).run(normalizedEmail, normalizedEmail.split('@')[0]);
-    user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
-  }
-
-  const token = jwt.sign(
-    { userId: user.id, email: user.email },
-    process.env.JWT_SECRET,
-    { expiresIn: '30d' }
-  );
-
-  res.json({ token });
 });
 
 module.exports = router;
