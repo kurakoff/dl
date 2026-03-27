@@ -51,7 +51,7 @@ function DataTable({ rows, isPage }) {
   const Th = ({ id, label, right }) => (
     <th
       onClick={() => { col === id ? setAsc(x => !x) : (setCol(id), setAsc(false)); }}
-      className={`px-3 py-2.5 text-xs font-medium text-gray-500 cursor-pointer hover:text-gray-800 select-none whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}
+      className={`px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200 select-none whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}
     >
       {label}{col === id && <span className="ml-1 opacity-50">{asc ? '↑' : '↓'}</span>}
     </th>
@@ -60,8 +60,8 @@ function DataTable({ rows, isPage }) {
   return (
     <div className="overflow-auto" style={{ maxHeight: '420px' }}>
       <table className="w-full text-sm border-collapse">
-        <thead className="sticky top-0 bg-white z-10">
-          <tr className="border-b border-gray-100">
+        <thead className="sticky top-0 bg-white dark:bg-gray-800 z-10">
+          <tr className="border-b border-gray-100 dark:border-gray-700">
             <th className="px-3 py-2.5 text-xs text-gray-400 w-6 text-center">#</th>
             <Th id="key" label={isPage ? 'Page' : 'Query'} />
             <Th id="clicks"      label="Clicks"      right />
@@ -72,17 +72,17 @@ function DataTable({ rows, isPage }) {
         </thead>
         <tbody>
           {sorted.map((row, i) => (
-            <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/80">
-              <td className="px-3 py-2 text-xs text-gray-300 text-center">{i + 1}</td>
-              <td className="px-3 py-2 text-gray-800 max-w-xs">
+            <tr key={i} className="border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50/80 dark:hover:bg-gray-700/30">
+              <td className="px-3 py-2 text-xs text-gray-300 dark:text-gray-600 text-center">{i + 1}</td>
+              <td className="px-3 py-2 text-gray-800 dark:text-gray-200 max-w-xs">
                 <span className="block truncate" title={row.key}>
                   {isPage ? shortPage(row.key) : row.key}
                 </span>
               </td>
-              <td className="px-3 py-2 text-right font-medium text-gray-800">{fmtNum(row.clicks)}</td>
-              <td className="px-3 py-2 text-right text-gray-500">{fmtNum(row.impressions)}</td>
-              <td className="px-3 py-2 text-right text-gray-500">{fmtCtr(row.ctr)}</td>
-              <td className="px-3 py-2 text-right text-gray-500">{fmtPos(row.position)}</td>
+              <td className="px-3 py-2 text-right font-medium text-gray-800 dark:text-gray-200">{fmtNum(row.clicks)}</td>
+              <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtNum(row.impressions)}</td>
+              <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtCtr(row.ctr)}</td>
+              <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtPos(row.position)}</td>
             </tr>
           ))}
         </tbody>
@@ -100,13 +100,13 @@ function CountriesView({ rows }) {
         const pct = ((row.clicks || 0) / max) * 100;
         return (
           <div key={i} className="flex items-center gap-3 pr-1">
-            <span className="text-xs text-gray-300 w-5 text-right flex-shrink-0">{i + 1}</span>
-            <span className="text-sm text-gray-700 w-36 truncate flex-shrink-0">{countryName(row.key)}</span>
-            <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+            <span className="text-xs text-gray-300 dark:text-gray-600 w-5 text-right flex-shrink-0">{i + 1}</span>
+            <span className="text-sm text-gray-700 dark:text-gray-200 w-36 truncate flex-shrink-0">{countryName(row.key)}</span>
+            <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
               <div className="h-1.5 rounded-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
             </div>
             <div className="flex gap-3 text-xs text-right flex-shrink-0">
-              <span className="font-medium text-gray-700 w-14">{fmtNum(row.clicks)}</span>
+              <span className="font-medium text-gray-700 dark:text-gray-200 w-14">{fmtNum(row.clicks)}</span>
               <span className="text-gray-400 w-16 hidden sm:block">{fmtCtr(row.ctr)}</span>
               <span className="text-gray-400 w-8 hidden sm:block">{fmtPos(row.position)}</span>
             </div>
@@ -132,13 +132,13 @@ function DevicesView({ rows }) {
         return (
           <div key={i}>
             <div className="flex justify-between items-baseline mb-1.5">
-              <span className="text-sm font-medium text-gray-700">{DEV_LABEL[key] || row.key}</span>
-              <div className="flex gap-4 text-sm text-gray-500">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{DEV_LABEL[key] || row.key}</span>
+              <div className="flex gap-4 text-sm text-gray-500 dark:text-gray-400">
                 <span>{fmtNum(row.clicks)} clicks</span>
-                <span className="font-semibold text-gray-800">{pct.toFixed(1)}%</span>
+                <span className="font-semibold text-gray-800 dark:text-gray-200">{pct.toFixed(1)}%</span>
               </div>
             </div>
-            <div className="bg-gray-100 rounded-full h-3 overflow-hidden">
+            <div className="bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
               <div className="h-3 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
             </div>
             <div className="flex gap-5 mt-1.5 text-xs text-gray-400">
@@ -193,16 +193,16 @@ export default function SiteDetailModal({ site, startDate, endDate, onClose }) {
       <div className="absolute inset-0 bg-black/25 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden"
+      <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden"
            style={{ maxHeight: 'calc(100vh - 8rem)' }}>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
           <div>
-            <h2 className="font-semibold text-gray-900 text-base">{shortUrl(site.siteUrl)}</h2>
+            <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-base">{shortUrl(site.siteUrl)}</h2>
             <p className="text-xs text-gray-400 mt-0.5">{site.accountEmail}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition rounded-lg p-1.5 hover:bg-gray-100">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -210,7 +210,7 @@ export default function SiteDetailModal({ site, startDate, endDate, onClose }) {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-100 px-6 flex-shrink-0 gap-1">
+        <div className="flex border-b border-gray-100 dark:border-gray-700 px-6 flex-shrink-0 gap-1">
           {TABS.map(t => (
             <button
               key={t}
@@ -218,7 +218,7 @@ export default function SiteDetailModal({ site, startDate, endDate, onClose }) {
               className={`py-3 px-3 text-sm font-medium border-b-2 -mb-px transition ${
                 tab === t
                   ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
               }`}
             >
               {t}

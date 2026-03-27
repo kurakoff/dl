@@ -21,17 +21,6 @@ router.get('/', async (req, res) => {
   const results = [];
 
   for (const account of accounts) {
-    // Union of selected_sites + all dashboard_sites for this account (across all user's dashboards)
-    const selectedSites = db.prepare(
-      `SELECT site_url FROM selected_sites WHERE connected_account_id = ?
-       UNION
-       SELECT ds.site_url FROM dashboard_sites ds
-         JOIN dashboards d ON d.id = ds.dashboard_id
-         WHERE ds.connected_account_id = ? AND d.user_id = ?`
-    ).all(account.id, account.id, req.userId).map(r => r.site_url);
-
-    if (!selectedSites.length) continue;
-
     let client;
     try {
       client = await getClientForAccount(account);
@@ -42,7 +31,19 @@ router.get('/', async (req, res) => {
 
     const sc = google.searchconsole({ version: 'v1', auth: client });
 
-    for (const siteUrl of selectedSites) {
+    // Fetch ALL sites from Search Console for this account
+    let allSites;
+    try {
+      const { data } = await sc.sites.list();
+      allSites = (data.siteEntry || []).map(s => s.siteUrl);
+    } catch (err) {
+      console.error(`Failed to list sites for ${account.email}:`, err.message);
+      continue;
+    }
+
+    if (!allSites.length) continue;
+
+    for (const siteUrl of allSites) {
       try {
         const { data } = await sc.searchanalytics.query({
           siteUrl,

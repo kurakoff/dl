@@ -1,36 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts';
 
-// GSC-style colors per metric
-const METRIC_COLOR = {
-  clicks:      '#1a73e8',
-  impressions: '#5f6368',
-  ctr:         '#1e8e3e',
-  position:    '#f29900',
+// GSC-style colors per metric (light / dark)
+const METRIC_COLOR_LIGHT = {
+  clicks:      '#4285f4',
+  impressions: '#5e35b1',
+  ctr:         '#0d904f',
+  position:    '#e8710a',
 };
 
-const METRIC_FILL = {
-  clicks:      '#e8f0fe',
-  impressions: '#f1f3f4',
-  ctr:         '#e6f4ea',
-  position:    '#fef7e0',
+const METRIC_COLOR_DARK = {
+  clicks:      '#6ea8fe',
+  impressions: '#9d7de8',
+  ctr:         '#34d399',
+  position:    '#f5a623',
 };
+
+// Default export for non-chart usage (pills, stat cards, global toggles)
+const METRIC_COLOR = METRIC_COLOR_LIGHT;
 
 const METRIC_LABEL = {
-  clicks:      'Total clicks',
-  impressions: 'Total impressions',
-  ctr:         'Average CTR',
-  position:    'Average position',
+  clicks:      'Clicks',
+  impressions: 'Impressions',
+  ctr:         'CTR',
+  position:    'Position',
 };
+
+const ALL_METRICS = ['clicks', 'impressions', 'ctr', 'position'];
 
 function shortUrl(url) {
   return url
-    .replace(/^sc-domain:/, '')          // strip sc-domain: prefix
-    .replace(/^https?:\/\/(www\.)?/, '') // strip https://www.
-    .replace(/\/$/, '');                 // strip trailing slash
+    .replace(/^sc-domain:/, '')
+    .replace(/^https?:\/\/(www\.)?/, '')
+    .replace(/\/$/, '');
 }
 
 function formatDate(d) {
@@ -40,15 +45,14 @@ function formatDate(d) {
 function getGroupKey(dateStr, granularity) {
   const d = new Date(dateStr);
   if (granularity === 'week') {
-    // ISO week start (Monday)
     const day = d.getDay() || 7;
     const mon = new Date(d);
     mon.setDate(d.getDate() - day + 1);
     return mon.toISOString().slice(0, 10);
   }
-  if (granularity === 'month') return dateStr.slice(0, 7);       // "2026-03"
-  if (granularity === 'year')  return dateStr.slice(0, 4);       // "2026"
-  return dateStr;                                                  // "2026-03-24"
+  if (granularity === 'month') return dateStr.slice(0, 7);
+  if (granularity === 'year')  return dateStr.slice(0, 4);
+  return dateStr;
 }
 
 function formatGroupKey(key, granularity) {
@@ -57,7 +61,7 @@ function formatGroupKey(key, granularity) {
     return new Date(y, m - 1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
   }
   if (granularity === 'year') return key;
-  return formatDate(key); // day or week — show as date
+  return formatDate(key);
 }
 
 function aggregateData(rows, granularity) {
@@ -90,50 +94,44 @@ function formatVal(metric, v) {
   return Number(v).toLocaleString();
 }
 
-// Stat pill shown above chart (like GSC header)
-function StatPill({ label, value, color, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex flex-col items-start px-4 py-3 rounded-lg border transition-all ${
-        active
-          ? 'border-b-2 bg-white shadow-sm'
-          : 'border-transparent hover:bg-gray-50 text-gray-500'
-      }`}
-      style={{ borderBottomColor: active ? color : 'transparent' }}
-    >
-      <span className="text-xs text-gray-500 mb-1 whitespace-nowrap">{label}</span>
-      <span className="text-lg font-semibold" style={{ color: active ? color : '#3c4043' }}>
-        {value}
-      </span>
-    </button>
-  );
+function fmtCompact(v) {
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + 'M';
+  if (v >= 1_000) return (v / 1_000).toFixed(1) + 'K';
+  return String(v);
 }
 
-// Custom tooltip — GSC-style
-function GscTooltip({ active, payload, label, metric, granularity }) {
+// Multi-metric tooltip
+function MultiTooltip({ active, payload, label, granularity }) {
   if (!active || !payload?.length) return null;
-  const val = payload[0]?.value;
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs">
-      <p className="text-gray-500 mb-1">{formatGroupKey(label, granularity)}</p>
-      <p className="font-semibold" style={{ color: METRIC_COLOR[metric] }}>
-        {METRIC_LABEL[metric]}: {formatVal(metric, val)}
-      </p>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg px-3 py-2 text-xs">
+      <p className="text-gray-500 dark:text-gray-400 mb-1">{formatGroupKey(label, granularity)}</p>
+      {payload.map(p => (
+        <p key={p.dataKey} className="font-medium" style={{ color: p.stroke }}>
+          {METRIC_LABEL[p.dataKey]}: {formatVal(p.dataKey, p.value)}
+        </p>
+      ))}
     </div>
   );
 }
 
-export default function TrafficChart({ site, onDetailClick, granularity = 'day' }) {
-  const [metric, setMetric] = useState('clicks');
+export default function TrafficChart({ site, onDetailClick, granularity = 'day', globalMetrics, globalMetricVer, darkMode }) {
+  // Local metrics state — defaults to globalMetrics, resets when global changes
+  const [localMetrics, setLocalMetrics] = useState(globalMetrics || ['clicks']);
+
+  // When global metrics change (via globalMetricVer), reset local to match global
+  useEffect(() => {
+    setLocalMetrics(globalMetrics || ['clicks']);
+  }, [globalMetricVer]);
+
   if (!site) return null;
 
-  const hasData = site.data?.length > 0;
+  const activeMetrics = localMetrics.length > 0 ? localMetrics : ['clicks'];
 
+  const hasData = site.data?.length > 0;
   const rows = aggregateData(site.data || [], granularity);
   const n    = rows.length || 1;
 
-  // Aggregate stats
   const totals = rows.reduce(
     (a, r) => ({
       clicks:      a.clicks      + (r.clicks      || 0),
@@ -145,32 +143,40 @@ export default function TrafficChart({ site, onDetailClick, granularity = 'day' 
   );
 
   const stats = {
-    clicks:      formatVal('clicks',      totals.clicks),
-    impressions: formatVal('impressions', totals.impressions),
-    ctr:         formatVal('ctr',         totals.ctr / n),
-    position:    formatVal('position',    totals.position / n),
+    clicks:      fmtCompact(totals.clicks),
+    impressions: fmtCompact(totals.impressions),
+    ctr:         formatVal('ctr',      totals.ctr / n),
+    position:    formatVal('position', totals.position / n),
   };
 
-  const color = METRIC_COLOR[metric];
-  const fill  = METRIC_FILL[metric];
+  const toggleLocalMetric = (m) => {
+    setLocalMetrics(prev => {
+      if (prev.includes(m)) {
+        if (prev.length === 1) return prev;
+        return prev.filter(x => x !== m);
+      }
+      return [...prev, m];
+    });
+  };
 
-  // Chart data (already aggregated and sorted)
-  const chartData = rows;
-  const xFormatter = (key) => formatGroupKey(key, granularity);
+  const hasPosition = activeMetrics.includes('position');
+  const onlyPosition = activeMetrics.length === 1 && activeMetrics[0] === 'position';
+  const hasLeftAxis = activeMetrics.some(m => m !== 'position');
+  const colors = darkMode ? METRIC_COLOR_DARK : METRIC_COLOR_LIGHT;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
       {/* Site header */}
-      <div className="px-5 pt-4 pb-0 border-b border-gray-100">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold text-gray-800 truncate">
+      <div className="px-4 pt-3 pb-0 border-b border-gray-100 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
             {shortUrl(site.siteUrl)}
             <span className="ml-2 text-xs font-normal text-gray-400">{site.accountEmail}</span>
           </p>
           {onDetailClick && (
             <button
               onClick={() => onDetailClick(site)}
-              className="flex-shrink-0 ml-2 flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition"
+              className="flex-shrink-0 ml-2 flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
               title="View details"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -182,76 +188,118 @@ export default function TrafficChart({ site, onDetailClick, granularity = 'day' 
           )}
         </div>
 
-        {/* GSC-style stat pills */}
-        <div className="flex gap-1 overflow-x-auto">
-          {['clicks', 'impressions', 'ctr', 'position'].map(m => (
-            <StatPill
-              key={m}
-              label={METRIC_LABEL[m]}
-              value={stats[m]}
-              color={METRIC_COLOR[m]}
-              active={metric === m}
-              onClick={() => setMetric(m)}
-            />
-          ))}
+        {/* Local metric toggle pills */}
+        <div className="flex gap-1 pb-2 overflow-x-auto">
+          {ALL_METRICS.map(m => {
+            const active = activeMetrics.includes(m);
+            const pillColor = darkMode ? METRIC_COLOR_DARK[m] : METRIC_COLOR[m];
+            return (
+              <button
+                key={m}
+                onClick={() => toggleLocalMetric(m)}
+                className={`flex flex-col items-start px-2.5 py-1.5 rounded-lg transition-all text-left min-w-0 ${
+                  active ? 'text-white shadow-sm' : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'
+                }`}
+                style={active ? { backgroundColor: pillColor } : {}}
+              >
+                <span className={`text-[10px] leading-tight whitespace-nowrap ${active ? 'text-white/80' : 'text-gray-400'}`}>
+                  {METRIC_LABEL[m]}
+                </span>
+                <span className={`text-sm font-bold ${active ? 'text-white' : 'text-gray-700 dark:text-gray-200'}`}>
+                  {stats[m]}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* No data message */}
+      {/* No data */}
       {!hasData && (
         <div className="flex items-center justify-center h-32 text-sm text-gray-400 gap-2">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" />
           </svg>
-          No data for this period. Try expanding the date range.
+          No data for this period.
         </div>
       )}
 
-      {/* Chart */}
-      {hasData && <div className="px-2 pt-4 pb-2">
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id={`fill-${metric}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor={color} stopOpacity={0.15} />
-                <stop offset="95%" stopColor={color} stopOpacity={0}    />
-              </linearGradient>
-            </defs>
+      {/* Multi-metric chart */}
+      {hasData && (
+        <div className="px-2 pt-4 pb-2">
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={rows} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+              <defs>
+                {activeMetrics.map(m => (
+                  <linearGradient key={m} id={`fill-${m}-${site.siteUrl}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={colors[m]} stopOpacity={darkMode ? 0.2 : 0.12} />
+                    <stop offset="95%" stopColor={colors[m]} stopOpacity={0} />
+                  </linearGradient>
+                ))}
+              </defs>
 
-            <CartesianGrid strokeDasharray="" stroke="#f1f3f4" vertical={false} />
+              <CartesianGrid strokeDasharray="" stroke={darkMode ? '#374151' : '#f1f3f4'} vertical={false} />
 
-            <XAxis
-              dataKey="date"
-              tickFormatter={xFormatter}
-              tick={{ fontSize: 11, fill: '#80868b' }}
-              axisLine={false}
-              tickLine={false}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              tick={{ fontSize: 11, fill: '#80868b' }}
-              axisLine={false}
-              tickLine={false}
-              reversed={metric === 'position'}
-              tickFormatter={v => metric === 'ctr' ? `${v}%` : v}
-              width={40}
-            />
+              <XAxis
+                dataKey="date"
+                tickFormatter={(key) => formatGroupKey(key, granularity)}
+                tick={{ fontSize: 11, fill: '#80868b' }}
+                axisLine={false}
+                tickLine={false}
+                interval="preserveStartEnd"
+              />
 
-            <Tooltip content={<GscTooltip metric={metric} granularity={granularity} />} />
+              {/* Left Y axis — for clicks, impressions, ctr */}
+              {hasLeftAxis && (
+                <YAxis
+                  yAxisId="left"
+                  tick={{ fontSize: 11, fill: '#80868b' }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={v => {
+                    if (activeMetrics.includes('ctr') && !activeMetrics.includes('clicks') && !activeMetrics.includes('impressions')) return `${v}%`;
+                    return fmtCompact(v);
+                  }}
+                  width={40}
+                />
+              )}
 
-            <Area
-              type="monotone"
-              dataKey={metric}
-              stroke={color}
-              strokeWidth={2}
-              fill={`url(#fill-${metric})`}
-              dot={false}
-              activeDot={{ r: 4, fill: color, stroke: '#fff', strokeWidth: 2 }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>}
+              {/* Right Y axis — for position (reversed) */}
+              {hasPosition && (
+                <YAxis
+                  yAxisId="right"
+                  orientation={onlyPosition ? 'left' : 'right'}
+                  reversed
+                  tick={{ fontSize: 11, fill: '#80868b' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={40}
+                  domain={['auto', 'auto']}
+                />
+              )}
+
+              <Tooltip content={<MultiTooltip granularity={granularity} />} />
+
+              {activeMetrics.map(m => (
+                <Area
+                  key={m}
+                  yAxisId={m === 'position' ? 'right' : 'left'}
+                  type="monotone"
+                  dataKey={m}
+                  stroke={colors[m]}
+                  strokeWidth={2}
+                  fill={`url(#fill-${m}-${site.siteUrl})`}
+                  dot={false}
+                  activeDot={{ r: 4, fill: colors[m], stroke: darkMode ? '#1f2937' : '#fff', strokeWidth: 2 }}
+                />
+              ))}
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }
+
+export { METRIC_COLOR, METRIC_LABEL, ALL_METRICS };

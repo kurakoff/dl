@@ -50,16 +50,6 @@ function invertDir(d) {
   return d === 'growing' ? 'declining' : d === 'declining' ? 'growing' : 'stagnating';
 }
 
-// ─── Adaptive trend classification ────────────────────────────────────────────
-//
-// Strategy depends on the number of data points (n):
-//
-//  n < 5   (2–4 days)  — compare first vs last value; threshold ±20%
-//  n < 10  (5–9 days)  — compare avg of first/last third; threshold ±15%
-//  n < 21  (10–20 days)— same split + OLS t-test gate; threshold ±10%
-//  n ≥ 21  (21+ days)  — OLS + Mann-Kendall (p<0.05); threshold ±5%
-//
-// For "position": direction is inverted (lower rank = improvement).
 export function computeTrend(siteData, metric) {
   if (!siteData || siteData.length < 2) return 'stagnating';
 
@@ -70,10 +60,6 @@ export function computeTrend(siteData, metric) {
   const n = sorted.length;
   if (sorted.every(v => v === 0)) return 'stagnating';
 
-  // Comparison windows:
-  // - n ≥ 14: use 7-day windows (first week vs last week) — eliminates weekly seasonality
-  //           (Mon–Sun patterns repeat, so both windows have identical weekday composition)
-  // - n < 14: use outer thirds — maximises signal for short periods
   const useWeeklyWindow = n >= 14;
   const firstAvg = useWeeklyWindow
     ? avg(sorted.slice(0, 7))
@@ -92,19 +78,16 @@ export function computeTrend(siteData, metric) {
   let direction = 'stagnating';
 
   if (n < 5) {
-    // Very short period: pure comparison, looser threshold
     const T = 20;
     if (relChange >  T) direction = 'growing';
     if (relChange < -T) direction = 'declining';
 
   } else if (n < 10) {
-    // Short period: thirds comparison, moderate threshold
     const T = 15;
     if (relChange >  T) direction = 'growing';
     if (relChange < -T) direction = 'declining';
 
   } else if (n < 21) {
-    // Medium period: require OLS trend to be significant (t > 1.75, ≈ p < 0.10)
     const { tStat } = linearRegression(sorted);
     const T = 10;
     if (Math.abs(tStat) > 1.75) {
@@ -113,7 +96,6 @@ export function computeTrend(siteData, metric) {
     }
 
   } else {
-    // Long period: require both OLS (p<0.05) and Mann-Kendall (p<0.05)
     const { tStat } = linearRegression(sorted);
     const { z }     = mannKendall(sorted);
     const T = 5;
@@ -180,7 +162,7 @@ export default function TrendFilter({ value, onChange }) {
       <div className="relative" ref={ref}>
         <button
           onClick={handleOpen}
-          className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-gray-300 shadow-sm transition"
+          className="flex items-center gap-1.5 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-500 shadow-sm transition"
         >
           <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -194,16 +176,16 @@ export default function TrendFilter({ value, onChange }) {
         </button>
 
         {open && (
-          <div className="absolute top-full left-0 mt-1.5 z-50 bg-white border border-gray-200 rounded-2xl shadow-xl p-4"
+          <div className="absolute top-full left-0 mt-1.5 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl p-4"
                style={{ width: '260px' }}>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Trend filter</p>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Trend filter</p>
 
             <div className="mb-3">
               <p className="text-xs text-gray-400 mb-1.5">Metric to analyze</p>
               <select
                 value={draftMetric}
                 onChange={e => setDraftMetric(e.target.value)}
-                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-400 bg-white text-gray-700"
+                className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-400 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200"
               >
                 {METRICS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
@@ -221,7 +203,7 @@ export default function TrendFilter({ value, onChange }) {
                       className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border text-sm font-medium transition text-left ${
                         active
                           ? `${t.bg} ${t.border} ${t.color}`
-                          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                          : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
                       }`}
                     >
                       <span className="text-base w-4 text-center">{t.icon}</span>
