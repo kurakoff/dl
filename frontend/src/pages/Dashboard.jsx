@@ -710,6 +710,7 @@ export default function Dashboard() {
       {showSettings && (
         <SettingsModal
           inviteUrl={inviteUrl}
+          hasPassword={user?.hasPassword}
           onClose={() => setShowSettings(false)}
         />
       )}

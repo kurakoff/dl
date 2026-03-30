@@ -115,6 +115,17 @@ function initDb() {
     console.error('Migration error:', err.message);
   }
 
+  // Migration: add password_hash column to users
+  try {
+    const cols = database.prepare('PRAGMA table_info(users)').all();
+    if (!cols.find(c => c.name === 'password_hash')) {
+      database.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
+      console.log('Migration: added password_hash column to users');
+    }
+  } catch (err) {
+    console.error('Migration (password_hash) error:', err.message);
+  }
+
   console.log('Database initialized at', DB_PATH);
 }
 
