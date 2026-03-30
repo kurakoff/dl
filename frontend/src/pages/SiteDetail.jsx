@@ -394,14 +394,22 @@ export default function SiteDetail() {
 
   // Batch re-index all pages
   const handleBatchReindex = useCallback(async () => {
-    const pages = cache['Pages'];
-    if (!pages || pages.length === 0) {
-      setToast({ message: 'Load Pages tab first', type: 'error' });
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
     setBatchIndexing(true);
     try {
+      // Auto-load pages if not cached
+      let pages = cache['Pages'];
+      if (!pages) {
+        const res = await api.get('/api/analytics/site-detail', {
+          params: { accountId, siteUrl, startDate, endDate, dimension: 'page' },
+        });
+        pages = res.data.rows || [];
+        setCache(c => ({ ...c, Pages: pages }));
+      }
+      if (pages.length === 0) {
+        setToast({ message: 'No pages found', type: 'error' });
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
       const urls = pages.map(r => r.key);
       const res = await api.post('/api/indexing/publish-batch', {
         accountId,
@@ -424,7 +432,7 @@ export default function SiteDetail() {
       setBatchIndexing(false);
       setTimeout(() => setToast(null), 4000);
     }
-  }, [accountId, cache]);
+  }, [accountId, siteUrl, startDate, endDate, cache]);
 
   // Fetch tab data
   useEffect(() => {
