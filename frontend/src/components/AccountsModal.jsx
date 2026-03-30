@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-export default function AccountsModal({ accounts, onAddAccount, onDisconnect, onClose }) {
+export default function AccountsModal({ accounts, onAddAccount, onDisconnect, onReconnect, onClose }) {
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -44,14 +44,24 @@ export default function AccountsModal({ accounts, onAddAccount, onDisconnect, on
                     {acc.selected_sites?.length || 0} site{(acc.selected_sites?.length || 0) !== 1 ? 's' : ''} selected
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    if (confirm(`Disconnect ${acc.email}?`)) onDisconnect(acc.id);
-                  }}
-                  className="px-3 py-1.5 text-xs text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition flex-shrink-0"
-                >
-                  Disconnect
-                </button>
+                <div className="flex gap-2 flex-shrink-0">
+                  {!acc.has_indexing_scope && (
+                    <button
+                      onClick={() => onReconnect(acc.email)}
+                      className="px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition"
+                    >
+                      Reconnect
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (confirm(`Disconnect ${acc.email}?`)) onDisconnect(acc.id);
+                    }}
+                    className="px-3 py-1.5 text-xs text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition"
+                  >
+                    Disconnect
+                  </button>
+                </div>
               </div>
             ))}
           </div>

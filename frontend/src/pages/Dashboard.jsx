@@ -174,6 +174,11 @@ export default function Dashboard() {
     window.location.href = `${import.meta.env.VITE_API_URL}/auth/add-account?token=${token}&from=${window.location.origin}`;
   };
 
+  const handleReconnect = (email) => {
+    const token = localStorage.getItem('auth_token');
+    window.location.href = `${import.meta.env.VITE_API_URL}/auth/add-account?token=${token}&from=${window.location.origin}&hint=${encodeURIComponent(email)}`;
+  };
+
   const handleDisconnect = async (id) => {
     await api.delete(`/api/accounts/${id}`);
     await fetchAccounts();
@@ -708,6 +713,7 @@ export default function Dashboard() {
           accounts={accounts}
           onAddAccount={handleAddAccount}
           onDisconnect={handleDisconnect}
+          onReconnect={handleReconnect}
           onClose={() => setShowAccounts(false)}
         />
       )}

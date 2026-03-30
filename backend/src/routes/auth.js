@@ -184,12 +184,20 @@ router.get('/add-account', (req, res) => {
   const state = crypto.randomUUID();
   stateStore.set(state, { type: 'add_account', userId, from: frontendUrl, expiresAt: Date.now() + 10 * 60 * 1000 });
 
-  const url = makeClient('/auth/add-account/callback').generateAuthUrl({
+  const authParams = {
     access_type: 'offline',
     scope: SCOPES,
     state,
     prompt: 'consent select_account',
-  });
+  };
+
+  // If hint (email) is provided, pre-select that Google account
+  if (req.query.hint) {
+    authParams.login_hint = req.query.hint;
+    authParams.prompt = 'consent';
+  }
+
+  const url = makeClient('/auth/add-account/callback').generateAuthUrl(authParams);
 
   res.redirect(url);
 });
