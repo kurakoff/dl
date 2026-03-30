@@ -420,9 +420,10 @@ export default function Dashboard() {
               {/* All sites */}
               <button
                 onClick={() => { setActiveDashboardId(null); setShowForm(false); }}
-                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-sm mb-1 transition ${!activeDashboardId ? 'bg-blue-50 dark:bg-gray-700 text-blue-600 dark:text-blue-300 font-medium' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-sm mb-1 transition ${!activeDashboardId ? 'bg-blue-50 dark:bg-gray-700 text-blue-600 dark:text-blue-300 font-medium' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
               >
-                All sites
+                <span>All sites</span>
+                <span className="text-xs opacity-40">{analytics.length}</span>
               </button>
 
               {/* Dashboard list */}
