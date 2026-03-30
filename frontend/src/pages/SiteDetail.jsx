@@ -227,7 +227,7 @@ function DataTable({ rows, isPage, onRequestIndexing }) {
             <Th id="impressions" label="Impressions"  right />
             <Th id="ctr"         label="CTR"          right />
             <Th id="position"    label="Position"     right />
-            {isPage && <th className="px-2 py-2.5 w-8" />}
+            {isPage && onRequestIndexing && <th className="px-2 py-2.5 w-8" />}
           </tr>
         </thead>
         <tbody>
@@ -243,7 +243,7 @@ function DataTable({ rows, isPage, onRequestIndexing }) {
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtNum(row.impressions)}</td>
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtCtr(row.ctr)}</td>
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtPos(row.position)}</td>
-              {isPage && (
+              {isPage && onRequestIndexing && (
                 <td className="px-2 py-2 text-center">
                   <IndexButton url={row.key} onRequest={onRequestIndexing} />
                 </td>
@@ -352,6 +352,18 @@ export default function SiteDetail() {
 
   // Batch re-index
   const [batchIndexing, setBatchIndexing] = useState(false);
+
+  // Site ownership check
+  const [isSiteOwner, setIsSiteOwner] = useState(false);
+
+  useEffect(() => {
+    api.get(`/api/accounts/${accountId}/sites`)
+      .then(res => {
+        const site = (res.data.sites || []).find(s => s.url === siteUrl);
+        setIsSiteOwner(site?.permissionLevel === 'siteOwner');
+      })
+      .catch(() => {});
+  }, [accountId, siteUrl]);
 
   // Fetch traffic data
   const fetchTraffic = useCallback(async () => {
@@ -525,25 +537,27 @@ export default function SiteDetail() {
         />
 
         {/* Granularity picker */}
-        {/* Re-index All Pages */}
-        <button
-          onClick={handleBatchReindex}
-          disabled={batchIndexing}
-          className="ml-auto flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition disabled:opacity-50"
-        >
-          {batchIndexing ? (
-            <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-            </svg>
-          ) : (
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          )}
-          Re-index All Pages
-        </button>
+        {/* Re-index All Pages (only for site owners) */}
+        {isSiteOwner && (
+          <button
+            onClick={handleBatchReindex}
+            disabled={batchIndexing}
+            className="ml-auto flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition disabled:opacity-50"
+          >
+            {batchIndexing ? (
+              <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+            Re-index All Pages
+          </button>
+        )}
         <div className="flex items-center bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm overflow-hidden">
           {[['D', 'day'], ['W', 'week'], ['M', 'month']].map(([label, val]) => (
             <button
@@ -719,7 +733,7 @@ export default function SiteDetail() {
             {!tabLoading && !tabError && tabRows.length > 0 && (
               <>
                 {tab === 'Queries'   && <DataTable rows={tabRows} isPage={false} />}
-                {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={handleRequestIndexing} />}
+                {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} />}
                 {tab === 'Countries' && <CountriesView rows={tabRows} />}
                 {tab === 'Devices'   && <DevicesView   rows={tabRows} />}
               </>
