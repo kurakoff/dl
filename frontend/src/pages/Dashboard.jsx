@@ -5,7 +5,6 @@ import TrafficChart, { METRIC_COLOR, METRIC_LABEL, ALL_METRICS } from '../compon
 import DateRangePicker from '../components/DateRangePicker';
 import MetricFilter, { applyMetricFilters } from '../components/MetricFilter';
 import TrendFilter, { applyTrendFilter } from '../components/TrendFilter';
-import SiteDetailModal from '../components/SiteDetailModal';
 import UserMenu from '../components/UserMenu';
 import SettingsModal from '../components/SettingsModal';
 import AccountsModal from '../components/AccountsModal';
@@ -83,7 +82,6 @@ export default function Dashboard() {
   const [siteSearch,        setSiteSearch]        = useState('');
   const [metricFilters,     setMetricFilters]     = useState([]);
   const [trendFilter,       setTrendFilter]       = useState({ trends: [], metric: 'clicks' });
-  const [detailSite,        setDetailSite]        = useState(null);
   const [sidebarCollapsed,  setSidebarCollapsed]  = useState(false);
   const [granularity,       setGranularity]       = useState('day');
   const [inviteUrl,         setInviteUrl]         = useState('');
@@ -644,7 +642,6 @@ export default function Dashboard() {
                 <TrafficChart
                   key={site.siteUrl + site.accountId}
                   site={site}
-                  onDetailClick={setDetailSite}
                   granularity={granularity}
                   globalMetrics={globalMetrics}
                   globalMetricVer={globalMetricVer}
@@ -697,15 +694,6 @@ export default function Dashboard() {
       </main>
 
       {/* ── Modals ─────────────────────────────────────────────────────────────── */}
-
-      {detailSite && (
-        <SiteDetailModal
-          site={detailSite}
-          startDate={startDate}
-          endDate={endDate}
-          onClose={() => setDetailSite(null)}
-        />
-      )}
 
       {showSettings && (
         <SettingsModal
