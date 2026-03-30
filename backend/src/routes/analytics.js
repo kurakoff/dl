@@ -18,32 +18,31 @@ router.get('/', async (req, res) => {
     'SELECT * FROM connected_accounts WHERE user_id = ?'
   ).all(req.userId);
 
-  const results = [];
-
-  for (const account of accounts) {
+  // Fetch all accounts in parallel
+  const accountResults = await Promise.all(accounts.map(async (account) => {
     let client;
     try {
       client = await getClientForAccount(account);
     } catch (err) {
       console.error(`Token refresh failed for account ${account.email}:`, err.message);
-      continue;
+      return [];
     }
 
     const sc = google.searchconsole({ version: 'v1', auth: client });
 
-    // Fetch ALL sites from Search Console for this account
     let allSites;
     try {
       const { data } = await sc.sites.list();
       allSites = (data.siteEntry || []).map(s => s.siteUrl);
     } catch (err) {
       console.error(`Failed to list sites for ${account.email}:`, err.message);
-      continue;
+      return [];
     }
 
-    if (!allSites.length) continue;
+    if (!allSites.length) return [];
 
-    for (const siteUrl of allSites) {
+    // Fetch analytics for all sites of this account in parallel
+    return Promise.all(allSites.map(async (siteUrl) => {
       try {
         const { data } = await sc.searchanalytics.query({
           siteUrl,
@@ -55,7 +54,7 @@ router.get('/', async (req, res) => {
           },
         });
 
-        results.push({
+        return {
           accountId:    account.id,
           accountEmail: account.email,
           siteUrl,
@@ -63,23 +62,24 @@ router.get('/', async (req, res) => {
             date:        row.keys[0],
             clicks:      row.clicks,
             impressions: row.impressions,
-            ctr:         Math.round(row.ctr * 10000) / 100,      // percent, 2dp
-            position:    Math.round(row.position * 10) / 10,     // 1dp
+            ctr:         Math.round(row.ctr * 10000) / 100,
+            position:    Math.round(row.position * 10) / 10,
           })),
-        });
+        };
       } catch (err) {
         console.error(`Analytics error for ${siteUrl}:`, err.message);
-        results.push({
+        return {
           accountId:    account.id,
           accountEmail: account.email,
           siteUrl,
           error: err.message,
           data: [],
-        });
+        };
       }
-    }
-  }
+    }));
+  }));
 
+  const results = accountResults.flat();
   res.json({ results, startDate: start, endDate: end });
 });
 
