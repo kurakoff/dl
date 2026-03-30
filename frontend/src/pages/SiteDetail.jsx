@@ -350,6 +350,9 @@ export default function SiteDetail() {
   // Toast
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
 
+  // Batch re-index
+  const [batchIndexing, setBatchIndexing] = useState(false);
+
   // Fetch traffic data
   const fetchTraffic = useCallback(async () => {
     setLoadingChart(true);
@@ -388,6 +391,40 @@ export default function SiteDetail() {
       return { ok: false };
     }
   }, [accountId]);
+
+  // Batch re-index all pages
+  const handleBatchReindex = useCallback(async () => {
+    const pages = cache['Pages'];
+    if (!pages || pages.length === 0) {
+      setToast({ message: 'Load Pages tab first', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    setBatchIndexing(true);
+    try {
+      const urls = pages.map(r => r.key);
+      const res = await api.post('/api/indexing/publish-batch', {
+        accountId,
+        urls,
+        type: 'URL_UPDATED',
+      });
+      const { succeeded, failed } = res.data;
+      setToast({
+        message: `Re-indexed: ${succeeded} ok${failed ? `, ${failed} failed` : ''}`,
+        type: failed ? 'error' : 'success',
+      });
+    } catch (err) {
+      const errCode = err.response?.data?.error;
+      if (errCode === 'scope_missing') {
+        setToast({ message: 'Disconnect and reconnect this account to enable indexing.', type: 'error' });
+      } else {
+        setToast({ message: 'Batch indexing failed', type: 'error' });
+      }
+    } finally {
+      setBatchIndexing(false);
+      setTimeout(() => setToast(null), 4000);
+    }
+  }, [accountId, cache]);
 
   // Fetch tab data
   useEffect(() => {
@@ -481,6 +518,25 @@ export default function SiteDetail() {
         />
 
         {/* Granularity picker */}
+        {/* Re-index All Pages */}
+        <button
+          onClick={handleBatchReindex}
+          disabled={batchIndexing}
+          className="ml-auto flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition disabled:opacity-50"
+        >
+          {batchIndexing ? (
+            <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+            </svg>
+          ) : (
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          )}
+          Re-index All Pages
+        </button>
         <div className="flex items-center bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm overflow-hidden">
           {[['D', 'day'], ['W', 'week'], ['M', 'month']].map(([label, val]) => (
             <button
