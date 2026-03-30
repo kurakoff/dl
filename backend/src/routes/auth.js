@@ -313,6 +313,7 @@ router.get('/me', requireAuth, (req, res) => {
     .prepare('SELECT id, email, name, picture, (password_hash IS NOT NULL) as hasPassword FROM users WHERE id = ?')
     .get(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
+  user.hasPassword = !!user.hasPassword;
   res.json(user);
 });
 
