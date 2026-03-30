@@ -40,7 +40,7 @@ router.get('/', (req, res) => {
   const db = getDb();
 
   const accounts = db.prepare(`
-    SELECT id, google_id, email, name, picture, created_at
+    SELECT id, google_id, email, name, picture, created_at, has_indexing_scope
     FROM connected_accounts
     WHERE user_id = ?
     ORDER BY created_at ASC

@@ -126,6 +126,17 @@ function initDb() {
     console.error('Migration (password_hash) error:', err.message);
   }
 
+  // Migration: add has_indexing_scope column to connected_accounts
+  try {
+    const cols = database.prepare('PRAGMA table_info(connected_accounts)').all();
+    if (!cols.find(c => c.name === 'has_indexing_scope')) {
+      database.exec('ALTER TABLE connected_accounts ADD COLUMN has_indexing_scope INTEGER DEFAULT 0');
+      console.log('Migration: added has_indexing_scope column to connected_accounts');
+    }
+  } catch (err) {
+    console.error('Migration (has_indexing_scope) error:', err.message);
+  }
+
   console.log('Database initialized at', DB_PATH);
 }
 

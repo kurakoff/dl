@@ -139,9 +139,66 @@ function MultiTooltip({ active, payload, label, granularity }) {
   );
 }
 
+// ── IndexButton ─────────────────────────────────────────────────────────────
+
+function IndexButton({ url, onRequest }) {
+  const [state, setState] = useState('idle'); // idle | loading | success | error
+
+  const handleClick = async () => {
+    if (state === 'loading' || state === 'success') return;
+    setState('loading');
+    const result = await onRequest(url);
+    if (result.ok) {
+      setState('success');
+      setTimeout(() => setState('idle'), 3000);
+    } else {
+      setState('error');
+      setTimeout(() => setState('idle'), 3000);
+    }
+  };
+
+  if (state === 'loading') {
+    return (
+      <svg className="animate-spin h-4 w-4 text-blue-500 mx-auto" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+      </svg>
+    );
+  }
+
+  if (state === 'success') {
+    return (
+      <svg className="h-4 w-4 text-green-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+      </svg>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <svg className="h-4 w-4 text-red-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+      </svg>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      title="Request re-indexing"
+      className="text-gray-400 hover:text-blue-500 transition"
+    >
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    </button>
+  );
+}
+
 // ── DataTable (Queries / Pages) ──────────────────────────────────────────────
 
-function DataTable({ rows, isPage }) {
+function DataTable({ rows, isPage, onRequestIndexing }) {
   const [col, setCol] = useState('clicks');
   const [asc, setAsc] = useState(false);
 
@@ -170,6 +227,7 @@ function DataTable({ rows, isPage }) {
             <Th id="impressions" label="Impressions"  right />
             <Th id="ctr"         label="CTR"          right />
             <Th id="position"    label="Position"     right />
+            {isPage && <th className="px-2 py-2.5 w-8" />}
           </tr>
         </thead>
         <tbody>
@@ -185,6 +243,11 @@ function DataTable({ rows, isPage }) {
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtNum(row.impressions)}</td>
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtCtr(row.ctr)}</td>
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtPos(row.position)}</td>
+              {isPage && (
+                <td className="px-2 py-2 text-center">
+                  <IndexButton url={row.key} onRequest={onRequestIndexing} />
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -284,6 +347,9 @@ export default function SiteDetail() {
   const [tabLoading, setTabLoading] = useState(false);
   const [tabError, setTabError]     = useState('');
 
+  // Toast
+  const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
+
   // Fetch traffic data
   const fetchTraffic = useCallback(async () => {
     setLoadingChart(true);
@@ -299,6 +365,29 @@ export default function SiteDetail() {
   }, [startDate, endDate, accountId, siteUrl]);
 
   useEffect(() => { fetchTraffic(); }, [fetchTraffic]);
+
+  // Request re-indexing
+  const handleRequestIndexing = useCallback(async (url) => {
+    try {
+      await api.post('/api/indexing/publish', {
+        accountId,
+        url,
+        type: 'URL_UPDATED',
+      });
+      setToast({ message: 'Submitted for re-indexing', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+      return { ok: true };
+    } catch (err) {
+      const errCode = err.response?.data?.error;
+      if (errCode === 'scope_missing') {
+        setToast({ message: 'Disconnect and reconnect this account to enable indexing.', type: 'error' });
+      } else {
+        setToast({ message: 'Indexing request failed', type: 'error' });
+      }
+      setTimeout(() => setToast(null), 4000);
+      return { ok: false };
+    }
+  }, [accountId]);
 
   // Fetch tab data
   useEffect(() => {
@@ -567,7 +656,7 @@ export default function SiteDetail() {
             {!tabLoading && !tabError && tabRows.length > 0 && (
               <>
                 {tab === 'Queries'   && <DataTable rows={tabRows} isPage={false} />}
-                {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true}  />}
+                {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={handleRequestIndexing} />}
                 {tab === 'Countries' && <CountriesView rows={tabRows} />}
                 {tab === 'Devices'   && <DevicesView   rows={tabRows} />}
               </>
@@ -575,6 +664,28 @@ export default function SiteDetail() {
           </div>
         </div>
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-fade-in">
+          <div className={`px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 ${
+            toast.type === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}>
+            {toast.type === 'success' ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+              </svg>
+            )}
+            {toast.message}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
