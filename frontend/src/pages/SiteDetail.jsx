@@ -355,12 +355,14 @@ export default function SiteDetail() {
 
   // Site ownership check
   const [isSiteOwner, setIsSiteOwner] = useState(false);
+  const [permissionLevel, setPermissionLevel] = useState(null);
 
   useEffect(() => {
     api.get(`/api/accounts/${accountId}/sites`)
       .then(res => {
         const site = (res.data.sites || []).find(s => s.url === siteUrl);
         setIsSiteOwner(site?.permissionLevel === 'siteOwner');
+        setPermissionLevel(site?.permissionLevel || null);
       })
       .catch(() => {});
   }, [accountId, siteUrl]);
@@ -521,7 +523,18 @@ export default function SiteDetail() {
                 {shortUrl(siteUrl)}
               </h1>
               {siteData?.accountEmail && (
-                <p className="text-xs text-gray-400 mt-0.5">{siteData.accountEmail}</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {siteData.accountEmail}
+                  {permissionLevel && (
+                    <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                      permissionLevel === 'siteOwner'
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                        : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                    }`}>
+                      {{ siteOwner: 'Owner', siteFullUser: 'Full User', siteRestrictedUser: 'Restricted', siteUnverifiedUser: 'Unverified' }[permissionLevel] || permissionLevel}
+                    </span>
+                  )}
+                </p>
               )}
             </div>
           </div>
