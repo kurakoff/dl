@@ -416,11 +416,10 @@ export default function SiteDetail() {
         urls,
         type: 'URL_UPDATED',
       });
-      const { succeeded, failed } = res.data;
-      setToast({
-        message: `Re-indexed: ${succeeded} ok${failed ? `, ${failed} failed` : ''}`,
-        type: failed ? 'error' : 'success',
-      });
+      const { succeeded, failed, errors } = res.data;
+      let message = `Re-indexed: ${succeeded} ok${failed ? `, ${failed} failed` : ''}`;
+      if (failed && errors?.length) message += ` — ${errors[0].error}`;
+      setToast({ message, type: failed ? 'error' : 'success' });
     } catch (err) {
       const errCode = err.response?.data?.error;
       if (errCode === 'scope_missing') {

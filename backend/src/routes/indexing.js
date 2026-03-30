@@ -80,7 +80,9 @@ router.post('/publish-batch', async (req, res) => {
         succeeded++;
       } catch (err) {
         failed++;
-        errors.push({ url, error: err.message });
+        const detail = err.response?.data?.error?.message || err.message;
+        errors.push({ url, error: detail });
+        if (failed === 1) console.error('Indexing API error for', url, ':', detail);
       }
     }
 
