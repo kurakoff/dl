@@ -549,13 +549,13 @@ export default function SiteDetail() {
           onChange={(s, e) => { setStartDate(s); setEndDate(e); }}
         />
 
-        {/* Granularity picker */}
-        {/* Re-index All Pages (only for site owners) */}
+        {/* Granularity picker + Re-index pushed right */}
+        <div className="ml-auto flex items-center gap-3">
         {isSiteOwner && (
           <button
             onClick={handleBatchReindex}
             disabled={batchIndexing}
-            className="ml-auto flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition disabled:opacity-50"
           >
             {batchIndexing ? (
               <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
@@ -585,6 +585,7 @@ export default function SiteDetail() {
               {label}
             </button>
           ))}
+        </div>
         </div>
       </div>
 
