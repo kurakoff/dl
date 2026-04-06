@@ -64,6 +64,19 @@ function formatHour(ts) {
   return ts;
 }
 
+function timeAgo(dateStr) {
+  if (!dateStr) return null;
+  const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T23:59:59');
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60 * 10) / 10;
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 function formatGroupKey(key, granularity) {
   if (granularity === 'hour') return formatHour(key);
   if (granularity === 'month') {
@@ -181,6 +194,10 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
   const hasLeftAxis = activeMetrics.some(m => m !== 'position');
   const colors = darkMode ? METRIC_COLOR_DARK : METRIC_COLOR_LIGHT;
 
+  // Last data point for "Updated X ago"
+  const lastDate = rows.length > 0 ? rows[rows.length - 1].date : null;
+  const updatedAgo = timeAgo(lastDate);
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
       {/* Site header */}
@@ -190,19 +207,24 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
             {shortUrl(site.siteUrl)}
             <span className="ml-2 text-xs font-normal text-gray-400">{site.accountEmail}</span>
           </p>
-          <a
-            href={`/site/${site.accountId}/${encodeURIComponent(site.siteUrl)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-shrink-0 ml-2 flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
-            title="View details (opens in new tab)"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-            Details
-          </a>
+          <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+            {updatedAgo && (
+              <span className="text-[11px] text-gray-400">Updated {updatedAgo}</span>
+            )}
+            <a
+              href={`/site/${site.accountId}/${encodeURIComponent(site.siteUrl)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
+              title="View details (opens in new tab)"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Details
+            </a>
+          </div>
         </div>
 
         {/* Local metric toggle pills */}

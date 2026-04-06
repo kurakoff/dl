@@ -79,15 +79,25 @@ function formatDate(d) {
 }
 
 function formatHour(ts) {
-  // ts is ISO like "2026-04-05T14:00:00-07:00" or just "14" or a date string
   if (!ts) return '';
-  // If it looks like a full ISO timestamp
   if (ts.includes('T')) {
     const d = new Date(ts);
     return d.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
   }
-  // Fallback: just show the value
   return ts;
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return null;
+  const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T23:59:59');
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60 * 10) / 10;
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 }
 
 function getGroupKey(dateStr, granularity) {
@@ -561,6 +571,10 @@ export default function SiteDetail() {
   const chartRows = buildChartRows();
   const lastIncomplete = !isHourly && isEndToday && chartRows.length > 1 && chartRows.some(r => r.clicks_d != null);
 
+  // "Updated X ago" from last data point
+  const lastDate = rows.length > 0 ? rows[rows.length - 1].date : null;
+  const updatedAgo = timeAgo(lastDate);
+
   const tabRows = cache[tab] || [];
 
   return (
@@ -609,6 +623,10 @@ export default function SiteDetail() {
           endDate={endDate}
           onChange={(s, e) => { setStartDate(s); setEndDate(e); }}
         />
+
+        {updatedAgo && !loadingChart && (
+          <span className="text-xs text-gray-400">Updated {updatedAgo}</span>
+        )}
 
         {/* Granularity picker + Re-index pushed right */}
         <div className="ml-auto flex items-center gap-3">
