@@ -7,11 +7,12 @@ const { getClientForAccount } = require('./accounts');
 const router = express.Router();
 router.use(requireAuth);
 
-// GET /api/analytics?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+// GET /api/analytics?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&hourly=true
 // Returns search analytics for all selected sites across all connected accounts
 router.get('/', async (req, res) => {
   const end   = req.query.endDate   || new Date().toISOString().slice(0, 10);
   const start = req.query.startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10);
+  const hourly = req.query.hourly === 'true';
 
   const db       = getDb();
   const accounts = db.prepare(
@@ -44,14 +45,17 @@ router.get('/', async (req, res) => {
     // Fetch analytics for all sites of this account in parallel
     return Promise.all(allSites.map(async (siteUrl) => {
       try {
-        const { data } = await sc.searchanalytics.query({
-          siteUrl,
-          requestBody: {
+        const requestBody = {
             startDate: start,
             endDate:   end,
-            dimensions: ['date'],
-            rowLimit:   500,
-          },
+            dimensions: hourly ? ['hour'] : ['date'],
+            rowLimit:   hourly ? 2500 : 500,
+          };
+        if (hourly) requestBody.dataState = 'hourly_all';
+
+        const { data } = await sc.searchanalytics.query({
+          siteUrl,
+          requestBody,
         });
 
         return {
@@ -80,7 +84,7 @@ router.get('/', async (req, res) => {
   }));
 
   const results = accountResults.flat();
-  res.json({ results, startDate: start, endDate: end });
+  res.json({ results, startDate: start, endDate: end, hourly });
 });
 
 // GET /api/analytics/site-detail?accountId=&siteUrl=&startDate=&endDate=&dimension=

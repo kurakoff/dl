@@ -55,7 +55,17 @@ function getGroupKey(dateStr, granularity) {
   return dateStr;
 }
 
+function formatHour(ts) {
+  if (!ts) return '';
+  if (ts.includes('T')) {
+    const d = new Date(ts);
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+  }
+  return ts;
+}
+
 function formatGroupKey(key, granularity) {
+  if (granularity === 'hour') return formatHour(key);
   if (granularity === 'month') {
     const [y, m] = key.split('-');
     return new Date(y, m - 1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
@@ -65,7 +75,7 @@ function formatGroupKey(key, granularity) {
 }
 
 function aggregateData(rows, granularity) {
-  if (!granularity || granularity === 'day') return rows;
+  if (!granularity || granularity === 'day' || granularity === 'hour') return rows;
   const groups = new Map();
   for (const r of rows) {
     const key = getGroupKey(r.date, granularity);
@@ -103,9 +113,12 @@ function fmtCompact(v) {
 // Multi-metric tooltip
 function MultiTooltip({ active, payload, label, granularity }) {
   if (!active || !payload?.length) return null;
+  const displayLabel = granularity === 'hour' && label?.includes('T')
+    ? new Date(label).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', hour12: true })
+    : formatGroupKey(label, granularity);
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg px-3 py-2 text-xs">
-      <p className="text-gray-500 dark:text-gray-400 mb-1">{formatGroupKey(label, granularity)}</p>
+      <p className="text-gray-500 dark:text-gray-400 mb-1">{displayLabel}</p>
       {payload.map(p => (
         <p key={p.dataKey} className="font-medium" style={{ color: p.stroke }}>
           {METRIC_LABEL[p.dataKey]}: {formatVal(p.dataKey, p.value)}
@@ -130,7 +143,10 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
   const activeMetrics = localMetrics.length > 0 ? localMetrics : ['clicks'];
 
   const hasData = site.data?.length > 0;
-  const rows = aggregateData(site.data || [], granularity);
+  const sortedData = granularity === 'hour'
+    ? [...(site.data || [])].sort((a, b) => a.date.localeCompare(b.date))
+    : site.data || [];
+  const rows = aggregateData(sortedData, granularity);
   const n    = rows.length || 1;
 
   const totals = rows.reduce(

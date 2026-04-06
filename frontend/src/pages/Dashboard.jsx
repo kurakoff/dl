@@ -116,14 +116,19 @@ export default function Dashboard() {
     setDashboards(res.data);
   }, []);
 
+  const daysDiff = Math.round((new Date(endDate) - new Date(startDate)) / 86_400_000);
+  const isHourly = daysDiff <= 1;
+
   const fetchAnalytics = useCallback(async () => {
     setLoadingCharts(true);
     try {
-      const res = await api.get('/api/analytics', { params: { startDate, endDate } });
+      const params = { startDate, endDate };
+      if (isHourly) params.hourly = 'true';
+      const res = await api.get('/api/analytics', { params });
       setAnalytics(res.data.results || []);
     } catch { /* ignore */ }
     finally { setLoadingCharts(false); }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, isHourly]);
 
   useEffect(() => { fetchAccounts(); fetchDashboards(); }, [fetchAccounts, fetchDashboards]);
   useEffect(() => {
@@ -497,7 +502,8 @@ export default function Dashboard() {
               onChange={(s, e) => { setStartDate(s); setEndDate(e); }}
             />
 
-            {/* Granularity picker */}
+            {/* Granularity picker (hidden for hourly) */}
+            {!isHourly && (
             <div className="flex items-center bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm overflow-hidden">
               {[['D','day'],['W','week'],['M','month']].map(([label, val]) => (
                 <button
@@ -513,6 +519,7 @@ export default function Dashboard() {
                 </button>
               ))}
             </div>
+            )}
 
             {/* Site search */}
             <div className="flex items-center gap-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 shadow-sm">
@@ -647,7 +654,7 @@ export default function Dashboard() {
                 <TrafficChart
                   key={site.siteUrl + site.accountId}
                   site={site}
-                  granularity={granularity}
+                  granularity={isHourly ? 'hour' : granularity}
                   globalMetrics={globalMetrics}
                   globalMetricVer={globalMetricVer}
                   darkMode={darkMode}

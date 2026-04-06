@@ -78,6 +78,18 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }
 
+function formatHour(ts) {
+  // ts is ISO like "2026-04-05T14:00:00-07:00" or just "14" or a date string
+  if (!ts) return '';
+  // If it looks like a full ISO timestamp
+  if (ts.includes('T')) {
+    const d = new Date(ts);
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+  }
+  // Fallback: just show the value
+  return ts;
+}
+
 function getGroupKey(dateStr, granularity) {
   const d = new Date(dateStr);
   if (granularity === 'week') {
@@ -92,6 +104,7 @@ function getGroupKey(dateStr, granularity) {
 }
 
 function formatGroupKey(key, granularity) {
+  if (granularity === 'hour') return formatHour(key);
   if (granularity === 'month') {
     const [y, m] = key.split('-');
     return new Date(y, m - 1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
@@ -127,14 +140,20 @@ function aggregateData(rows, granularity) {
 
 function MultiTooltip({ active, payload, label, granularity }) {
   if (!active || !payload?.length) return null;
+  const displayLabel = granularity === 'hour' && label?.includes('T')
+    ? new Date(label).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', hour12: true })
+    : formatGroupKey(label, granularity);
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg px-3 py-2 text-xs">
-      <p className="text-gray-500 dark:text-gray-400 mb-1">{formatGroupKey(label, granularity)}</p>
-      {payload.map(p => (
-        <p key={p.dataKey} className="font-medium" style={{ color: p.stroke }}>
-          {METRIC_LABEL[p.dataKey]}: {formatVal(p.dataKey, p.value)}
-        </p>
-      ))}
+      <p className="text-gray-500 dark:text-gray-400 mb-1">{displayLabel}</p>
+      {payload.map(p => {
+        const key = p.dataKey.replace(/_d$/, '');
+        return (
+          <p key={p.dataKey} className="font-medium" style={{ color: p.stroke }}>
+            {METRIC_LABEL[key] || METRIC_LABEL[p.dataKey]}: {formatVal(key, p.value)}
+          </p>
+        );
+      })}
     </div>
   );
 }
@@ -367,11 +386,17 @@ export default function SiteDetail() {
       .catch(() => {});
   }, [accountId, siteUrl]);
 
+  // Detect if range is "Last 24 hours" (1 day span)
+  const daysDiff = Math.round((new Date(endDate) - new Date(startDate)) / 86_400_000);
+  const isHourly = daysDiff <= 1;
+
   // Fetch traffic data
   const fetchTraffic = useCallback(async () => {
     setLoadingChart(true);
     try {
-      const res = await api.get('/api/analytics', { params: { startDate, endDate } });
+      const params = { startDate, endDate };
+      if (isHourly) params.hourly = 'true';
+      const res = await api.get('/api/analytics', { params });
       const results = res.data.results || [];
       const match = results.find(
         r => String(r.accountId) === String(accountId) && r.siteUrl === siteUrl
@@ -379,7 +404,7 @@ export default function SiteDetail() {
       setSiteData(match || null);
     } catch { /* ignore */ }
     finally { setLoadingChart(false); }
-  }, [startDate, endDate, accountId, siteUrl]);
+  }, [startDate, endDate, accountId, siteUrl, isHourly]);
 
   useEffect(() => { fetchTraffic(); }, [fetchTraffic]);
 
@@ -463,8 +488,11 @@ export default function SiteDetail() {
   // Reset tab cache when dates change
   useEffect(() => { setCache({}); }, [startDate, endDate]);
 
-  // Chart data
-  const rows = aggregateData(siteData?.data || [], granularity);
+  // Chart data — skip aggregation for hourly, sort by timestamp
+  const effectiveGranularity = isHourly ? 'hour' : granularity;
+  const rows = isHourly
+    ? [...(siteData?.data || [])].sort((a, b) => a.date.localeCompare(b.date))
+    : aggregateData(siteData?.data || [], granularity);
   const hasData = rows.length > 0;
   const n = rows.length || 1;
 
@@ -500,22 +528,38 @@ export default function SiteDetail() {
   const hasLeftAxis = activeMetrics.some(m => m !== 'position');
   const colors = darkMode ? METRIC_COLOR_DARK : METRIC_COLOR_LIGHT;
 
-  // If endDate is today, last data point may be incomplete — show dashed
+  // If endDate is today, last data point may be incomplete — show dashed (daily only)
   const todayStr = new Date().toISOString().slice(0, 10);
   const isEndToday = endDate === todayStr;
-  const lastIncomplete = isEndToday && rows.length > 1;
 
-  // Add dashed keys: solid data gets nulled for last point, dashed gets nulled for all but last 2
-  const chartRows = lastIncomplete
-    ? rows.map((r, i, arr) => {
-        const base = { ...r };
-        ALL_METRICS.forEach(m => {
-          base[`${m}_d`] = (i >= arr.length - 2) ? r[m] : null; // dashed: last 2 points
-          if (i === arr.length - 1) base[m] = null;              // solid: null last point
-        });
-        return base;
-      })
-    : rows;
+  // Build chart data with dashed projection for incomplete/missing today
+  const buildChartRows = () => {
+    // For hourly data, use raw rows directly (API handles completeness)
+    if (isHourly) return rows;
+
+    let data = [...rows];
+
+    // If end is today and today has no data, add projected point
+    if (isEndToday && data.length > 0 && data[data.length - 1].date !== todayStr) {
+      const last = data[data.length - 1];
+      data.push({ date: todayStr, clicks: last.clicks, impressions: last.impressions, ctr: last.ctr, position: last.position, _projected: true });
+    }
+
+    if (!isEndToday || data.length < 2) return data;
+
+    // Mark last point as dashed
+    return data.map((r, i, arr) => {
+      const base = { ...r };
+      ALL_METRICS.forEach(m => {
+        base[`${m}_d`] = (i >= arr.length - 2) ? r[m] : null;
+        if (i === arr.length - 1) base[m] = null;
+      });
+      return base;
+    });
+  };
+
+  const chartRows = buildChartRows();
+  const lastIncomplete = !isHourly && isEndToday && chartRows.length > 1 && chartRows.some(r => r.clicks_d != null);
 
   const tabRows = cache[tab] || [];
 
@@ -588,6 +632,7 @@ export default function SiteDetail() {
             Re-index All Pages
           </button>
         )}
+        {!isHourly && (
         <div className="flex items-center bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm overflow-hidden">
           {[['D', 'day'], ['W', 'week'], ['M', 'month']].map(([label, val]) => (
             <button
@@ -603,6 +648,7 @@ export default function SiteDetail() {
             </button>
           ))}
         </div>
+        )}
         </div>
       </div>
 
@@ -668,7 +714,7 @@ export default function SiteDetail() {
 
                 <XAxis
                   dataKey="date"
-                  tickFormatter={(key) => formatGroupKey(key, granularity)}
+                  tickFormatter={(key) => formatGroupKey(key, effectiveGranularity)}
                   tick={{ fontSize: 11, fill: '#80868b' }}
                   axisLine={false}
                   tickLine={false}
@@ -702,7 +748,7 @@ export default function SiteDetail() {
                   />
                 )}
 
-                <Tooltip content={<MultiTooltip granularity={granularity} />} />
+                <Tooltip content={<MultiTooltip granularity={effectiveGranularity} />} />
 
                 {activeMetrics.map(m => (
                   <Area
