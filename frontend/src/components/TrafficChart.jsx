@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -117,7 +116,7 @@ function MultiTooltip({ active, payload, label, granularity }) {
 }
 
 export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode }) {
-  const navigate = useNavigate();
+
   // Local metrics state — defaults to globalMetrics, resets when global changes
   const [localMetrics, setLocalMetrics] = useState(globalMetrics || ['clicks']);
 
@@ -175,17 +174,19 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
             {shortUrl(site.siteUrl)}
             <span className="ml-2 text-xs font-normal text-gray-400">{site.accountEmail}</span>
           </p>
-          <button
-            onClick={() => navigate(`/site/${site.accountId}/${encodeURIComponent(site.siteUrl)}`)}
+          <a
+            href={`/site/${site.accountId}/${encodeURIComponent(site.siteUrl)}`}
+            target="_blank"
+            rel="noopener noreferrer"
             className="flex-shrink-0 ml-2 flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
-            title="View details"
+            title="View details (opens in new tab)"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
             </svg>
             Details
-          </button>
+          </a>
         </div>
 
         {/* Local metric toggle pills */}

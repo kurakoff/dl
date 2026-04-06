@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 const PRESETS = [
-  { label: 'Last 24 hours', days: 1 },
+  { label: 'Yesterday', days: 1 },
   { label: 'Last 7 days',   days: 7 },
   { label: 'Last 28 days',  days: 28 },
   { label: 'Last 90 days',  days: 90 },
@@ -42,11 +42,7 @@ export default function DateRangePicker({ startDate, endDate, onChange }) {
   };
 
   const applyPreset = (days) => {
-    if (days <= 1) {
-      apply(daysAgo(0), daysAgo(0));
-    } else {
-      apply(daysAgo(days), daysAgo(1));
-    }
+    apply(daysAgo(days), daysAgo(1));
   };
 
   const applyCustom = () => {
