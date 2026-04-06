@@ -331,7 +331,7 @@ export default function SiteDetail() {
 
   // Date range
   const [startDate, setStartDate] = useState(daysAgo(28));
-  const [endDate, setEndDate]     = useState(daysAgo(1));
+  const [endDate, setEndDate]     = useState(daysAgo(0));
   const [granularity, setGranularity] = useState('day');
 
   // Traffic data
@@ -500,6 +500,23 @@ export default function SiteDetail() {
   const hasLeftAxis = activeMetrics.some(m => m !== 'position');
   const colors = darkMode ? METRIC_COLOR_DARK : METRIC_COLOR_LIGHT;
 
+  // If endDate is today, last data point may be incomplete — show dashed
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const isEndToday = endDate === todayStr;
+  const lastIncomplete = isEndToday && rows.length > 1;
+
+  // Add dashed keys: solid data gets nulled for last point, dashed gets nulled for all but last 2
+  const chartRows = lastIncomplete
+    ? rows.map((r, i, arr) => {
+        const base = { ...r };
+        ALL_METRICS.forEach(m => {
+          base[`${m}_d`] = (i >= arr.length - 2) ? r[m] : null; // dashed: last 2 points
+          if (i === arr.length - 1) base[m] = null;              // solid: null last point
+        });
+        return base;
+      })
+    : rows;
+
   const tabRows = cache[tab] || [];
 
   return (
@@ -637,7 +654,7 @@ export default function SiteDetail() {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={350}>
-              <AreaChart data={rows} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+              <AreaChart data={chartRows} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
                 <defs>
                   {activeMetrics.map(m => (
                     <linearGradient key={m} id={`fill-detail-${m}`} x1="0" y1="0" x2="0" y2="1">
@@ -697,7 +714,24 @@ export default function SiteDetail() {
                     strokeWidth={2}
                     fill={`url(#fill-detail-${m})`}
                     dot={false}
+                    connectNulls={false}
                     activeDot={{ r: 4, fill: colors[m], stroke: darkMode ? '#1f2937' : '#fff', strokeWidth: 2 }}
+                  />
+                ))}
+                {/* Dashed line for last incomplete segment */}
+                {lastIncomplete && activeMetrics.map(m => (
+                  <Area
+                    key={`${m}_d`}
+                    yAxisId={m === 'position' ? 'right' : 'left'}
+                    type="monotone"
+                    dataKey={`${m}_d`}
+                    stroke={colors[m]}
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    fill="none"
+                    dot={false}
+                    connectNulls
+                    activeDot={false}
                   />
                 ))}
               </AreaChart>

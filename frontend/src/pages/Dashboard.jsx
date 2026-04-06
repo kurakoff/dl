@@ -70,7 +70,7 @@ export default function Dashboard() {
   const [accounts,      setAccounts]      = useState([]);
   const [analytics,     setAnalytics]     = useState([]);
   const [startDate,     setStartDate]     = useState(daysAgo(28));
-  const [endDate,       setEndDate]       = useState(daysAgo(1));
+  const [endDate,       setEndDate]       = useState(daysAgo(0));
   const [loadingCharts, setLoadingCharts] = useState(false);
   const [toast,         setToast]         = useState('');
 

@@ -24,6 +24,11 @@ npm-debug.log*
 # OS
 .DS_Store
 
+# Large files
+*.zip
+*.mov
+*.mp4
+
 # PM2
 backend/ecosystem.config.js.bak
 

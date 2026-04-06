@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 const PRESETS = [
-  { label: 'Yesterday', days: 1 },
+  { label: 'Last 24 hours', days: 1 },
   { label: 'Last 7 days',   days: 7 },
   { label: 'Last 28 days',  days: 28 },
   { label: 'Last 90 days',  days: 90 },
@@ -10,7 +10,9 @@ const PRESETS = [
 ];
 
 function daysAgo(n) {
-  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
 }
 
 function fmt(dateStr) {
@@ -42,14 +44,14 @@ export default function DateRangePicker({ startDate, endDate, onChange }) {
   };
 
   const applyPreset = (days) => {
-    apply(daysAgo(days), daysAgo(1));
+    apply(daysAgo(days), daysAgo(0));
   };
 
   const applyCustom = () => {
     if (tempStart && tempEnd && tempStart <= tempEnd) apply(tempStart, tempEnd);
   };
 
-  const today = daysAgo(1);
+  const today = daysAgo(0);
 
   return (
     <div className="relative" ref={ref}>
@@ -115,8 +117,8 @@ export default function DateRangePicker({ startDate, endDate, onChange }) {
           {/* Presets */}
           <div className="p-2">
             {PRESETS.map(p => {
-              const s = p.days <= 1 ? daysAgo(0) : daysAgo(p.days);
-              const e = p.days <= 1 ? daysAgo(0) : daysAgo(1);
+              const s = daysAgo(p.days);
+              const e = daysAgo(0);
               const active = s === startDate && e === endDate;
               return (
                 <button
