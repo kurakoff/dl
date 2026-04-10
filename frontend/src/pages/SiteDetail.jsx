@@ -19,7 +19,7 @@ const METRIC_COLOR = METRIC_COLOR_LIGHT;
 const METRIC_LABEL = { clicks: 'Clicks', impressions: 'Impressions', ctr: 'CTR', position: 'Position' };
 const ALL_METRICS = ['clicks', 'impressions', 'ctr', 'position'];
 
-const TABS = ['Queries', 'Pages', 'Countries', 'Devices', 'Inspect'];
+const TABS = ['Queries', 'Pages', 'Countries', 'Devices', 'URL inspection'];
 const DIM  = { Queries: 'query', Pages: 'page', Countries: 'country', Devices: 'device' };
 
 const COUNTRY = {
@@ -1002,7 +1002,7 @@ export default function SiteDetail() {
 
           {/* Tab content */}
           <div className="px-6 py-4">
-            {tab === 'Inspect' ? (
+            {tab === 'URL inspection' ? (
               <UrlInspectionView
                 accountId={accountId}
                 siteUrl={siteUrl}
