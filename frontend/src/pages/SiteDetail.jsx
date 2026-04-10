@@ -19,7 +19,7 @@ const METRIC_COLOR = METRIC_COLOR_LIGHT;
 const METRIC_LABEL = { clicks: 'Clicks', impressions: 'Impressions', ctr: 'CTR', position: 'Position' };
 const ALL_METRICS = ['clicks', 'impressions', 'ctr', 'position'];
 
-const TABS = ['Queries', 'Pages', 'Countries', 'Devices'];
+const TABS = ['Queries', 'Pages', 'Countries', 'Devices', 'URL Inspection'];
 const DIM  = { Queries: 'query', Pages: 'page', Countries: 'country', Devices: 'device' };
 
 const COUNTRY = {
@@ -349,6 +349,178 @@ function DevicesView({ rows }) {
   );
 }
 
+// ── URL Inspection ──────────────────────────────────────────────────────────
+
+const VERDICT_STYLE = {
+  PASS:    { label: 'URL is on Google',     bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200 dark:border-green-800', text: 'text-green-700 dark:text-green-400', icon: '✓' },
+  PARTIAL: { label: 'URL is on Google (with issues)', bg: 'bg-yellow-50 dark:bg-yellow-900/20', border: 'border-yellow-200 dark:border-yellow-800', text: 'text-yellow-700 dark:text-yellow-400', icon: '⚠' },
+  FAIL:    { label: 'URL is not on Google', bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', text: 'text-red-700 dark:text-red-400', icon: '✕' },
+  VERDICT_UNSPECIFIED: { label: 'Unknown status', bg: 'bg-gray-50 dark:bg-gray-700', border: 'border-gray-200 dark:border-gray-600', text: 'text-gray-600 dark:text-gray-300', icon: '?' },
+};
+
+function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast }) {
+  const [url, setUrl] = useState('');
+  const [inspecting, setInspecting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+  const [indexing, setIndexing] = useState(false);
+  const [indexDone, setIndexDone] = useState(false);
+
+  const handleInspect = async () => {
+    if (!url.trim()) return;
+    setInspecting(true);
+    setResult(null);
+    setError('');
+    setIndexDone(false);
+    try {
+      const res = await api.post('/api/indexing/inspect', {
+        accountId,
+        siteUrl,
+        inspectionUrl: url.trim(),
+      });
+      setResult(res.data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Inspection failed');
+    } finally {
+      setInspecting(false);
+    }
+  };
+
+  const handleRequestIndexing = async () => {
+    setIndexing(true);
+    try {
+      await api.post('/api/indexing/publish', {
+        accountId,
+        url: url.trim(),
+        type: 'URL_UPDATED',
+      });
+      setIndexDone(true);
+      if (onToast) onToast({ message: 'Indexing requested successfully', type: 'success' });
+    } catch (err) {
+      const errCode = err.response?.data?.error;
+      if (errCode === 'scope_missing') {
+        if (onToast) onToast({ message: 'Reconnect this account to enable indexing.', type: 'error' });
+      } else {
+        if (onToast) onToast({ message: 'Indexing request failed', type: 'error' });
+      }
+    } finally {
+      setIndexing(false);
+    }
+  };
+
+  const vs = result ? (VERDICT_STYLE[result.verdict] || VERDICT_STYLE.VERDICT_UNSPECIFIED) : null;
+
+  return (
+    <div className="space-y-4">
+      {/* URL input */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleInspect()}
+            placeholder={`Inspect any URL in "${shortUrl(siteUrl)}"`}
+            className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 outline-none focus:border-blue-400 dark:focus:border-blue-500 transition"
+          />
+        </div>
+        <button
+          onClick={handleInspect}
+          disabled={inspecting || !url.trim()}
+          className="px-4 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 transition flex items-center gap-2"
+        >
+          {inspecting ? (
+            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+            </svg>
+          ) : (
+            'Inspect'
+          )}
+        </button>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && vs && (
+        <div className={`rounded-xl border ${vs.border} ${vs.bg} overflow-hidden`}>
+          {/* Verdict header */}
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`text-lg font-bold ${vs.text}`}>{vs.icon}</span>
+              <div>
+                <p className={`text-sm font-semibold ${vs.text}`}>{vs.label}</p>
+                {result.coverageState && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{result.coverageState}</p>
+                )}
+              </div>
+            </div>
+            {/* Request Indexing button */}
+            {isSiteOwner && (
+              <button
+                onClick={handleRequestIndexing}
+                disabled={indexing || indexDone}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
+                  indexDone
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                    : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'
+                } disabled:opacity-60`}
+              >
+                {indexing ? 'Requesting...' : indexDone ? 'Indexing Requested' : 'Request Indexing'}
+              </button>
+            )}
+          </div>
+
+          {/* Details */}
+          <div className="border-t border-gray-200/50 dark:border-gray-700/50 px-4 py-3">
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              {result.indexingState && (
+                <div>
+                  <span className="text-gray-400">Indexing</span>
+                  <p className="text-gray-700 dark:text-gray-200 font-medium">{result.indexingState.replace(/_/g, ' ').toLowerCase()}</p>
+                </div>
+              )}
+              {result.crawledAs && (
+                <div>
+                  <span className="text-gray-400">Crawled as</span>
+                  <p className="text-gray-700 dark:text-gray-200 font-medium">{result.crawledAs}</p>
+                </div>
+              )}
+              {result.pageFetchState && (
+                <div>
+                  <span className="text-gray-400">Page fetch</span>
+                  <p className="text-gray-700 dark:text-gray-200 font-medium">{result.pageFetchState.replace(/_/g, ' ').toLowerCase()}</p>
+                </div>
+              )}
+              {result.robotsTxtState && (
+                <div>
+                  <span className="text-gray-400">Robots.txt</span>
+                  <p className="text-gray-700 dark:text-gray-200 font-medium">{result.robotsTxtState.replace(/_/g, ' ').toLowerCase()}</p>
+                </div>
+              )}
+              {result.lastCrawlTime && (
+                <div>
+                  <span className="text-gray-400">Last crawl</span>
+                  <p className="text-gray-700 dark:text-gray-200 font-medium">{new Date(result.lastCrawlTime).toLocaleString()}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── SiteDetail Page ──────────────────────────────────────────────────────────
 
 export default function SiteDetail() {
@@ -482,8 +654,9 @@ export default function SiteDetail() {
     }
   }, [accountId, siteUrl, startDate, endDate, cache]);
 
-  // Fetch tab data
+  // Fetch tab data (skip for URL Inspection — it has its own fetch)
   useEffect(() => {
+    if (!DIM[tab]) return;
     if (cache[tab] !== undefined) return;
     setTabLoading(true);
     setTabError('');
@@ -829,25 +1002,36 @@ export default function SiteDetail() {
 
           {/* Tab content */}
           <div className="px-6 py-4">
-            {tabLoading && (
-              <div className="flex items-center justify-center h-40 gap-2 text-gray-400 text-sm">
-                <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                </svg>
-                Loading…
-              </div>
-            )}
-            {!tabLoading && tabError && <p className="text-sm text-red-400 text-center py-10">{tabError}</p>}
-            {!tabLoading && !tabError && tabRows.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-10">No data for this period.</p>
-            )}
-            {!tabLoading && !tabError && tabRows.length > 0 && (
+            {tab === 'URL Inspection' ? (
+              <UrlInspectionView
+                accountId={accountId}
+                siteUrl={siteUrl}
+                isSiteOwner={isSiteOwner}
+                onToast={(t) => { setToast(t); setTimeout(() => setToast(null), 3000); }}
+              />
+            ) : (
               <>
-                {tab === 'Queries'   && <DataTable rows={tabRows} isPage={false} />}
-                {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} />}
-                {tab === 'Countries' && <CountriesView rows={tabRows} />}
-                {tab === 'Devices'   && <DevicesView   rows={tabRows} />}
+                {tabLoading && (
+                  <div className="flex items-center justify-center h-40 gap-2 text-gray-400 text-sm">
+                    <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                    </svg>
+                    Loading…
+                  </div>
+                )}
+                {!tabLoading && tabError && <p className="text-sm text-red-400 text-center py-10">{tabError}</p>}
+                {!tabLoading && !tabError && tabRows.length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-10">No data for this period.</p>
+                )}
+                {!tabLoading && !tabError && tabRows.length > 0 && (
+                  <>
+                    {tab === 'Queries'   && <DataTable rows={tabRows} isPage={false} />}
+                    {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} />}
+                    {tab === 'Countries' && <CountriesView rows={tabRows} />}
+                    {tab === 'Devices'   && <DevicesView   rows={tabRows} />}
+                  </>
+                )}
               </>
             )}
           </div>

@@ -93,4 +93,51 @@ router.post('/publish-batch', async (req, res) => {
   }
 });
 
+// POST /api/indexing/inspect
+router.post('/inspect', async (req, res) => {
+  const { accountId, siteUrl, inspectionUrl } = req.body;
+
+  if (!accountId || !siteUrl || !inspectionUrl) {
+    return res.status(400).json({ error: 'accountId, siteUrl, and inspectionUrl are required' });
+  }
+
+  const db = getDb();
+  const account = db.prepare(
+    'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ?'
+  ).get(accountId, req.userId);
+
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+
+  try {
+    const client = await getClientForAccount(account);
+    const sc = google.searchconsole({ version: 'v1', auth: client });
+
+    const { data } = await sc.urlInspection.index.inspect({
+      requestBody: {
+        inspectionUrl,
+        siteUrl,
+      },
+    });
+
+    const result = data.inspectionResult || {};
+    const index = result.indexStatusResult || {};
+
+    res.json({
+      verdict: index.verdict,
+      coverageState: index.coverageState,
+      robotsTxtState: index.robotsTxtState,
+      indexingState: index.indexingState,
+      lastCrawlTime: index.lastCrawlTime,
+      pageFetchState: index.pageFetchState,
+      crawledAs: index.crawledAs,
+      referringUrls: index.referringUrls,
+      sitemap: index.sitemap,
+    });
+  } catch (err) {
+    const detail = err.response?.data?.error?.message || err.message;
+    console.error('URL Inspection error:', detail);
+    res.status(500).json({ error: detail });
+  }
+});
+
 module.exports = router;
