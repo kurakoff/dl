@@ -87,17 +87,31 @@ function formatHour(ts) {
   return ts;
 }
 
+// Alt: exact calculation from last data point timestamp
+// function timeAgo(dateStr) {
+//   if (!dateStr) return null;
+//   const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T23:59:59');
+//   const diff = Date.now() - d.getTime();
+//   const mins = Math.floor(diff / 60000);
+//   if (mins < 1) return 'just now';
+//   if (mins < 60) return `${mins}m ago`;
+//   const hrs = Math.round(mins / 60 * 10) / 10;
+//   if (hrs < 24) return `${hrs}h ago`;
+//   const days = Math.floor(hrs / 24);
+//   return `${days}d ago`;
+// }
+
 function timeAgo(dateStr) {
   if (!dateStr) return null;
-  const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T23:59:59');
+  const d = dateStr.includes('T')
+    ? new Date(dateStr)
+    : new Date(dateStr + 'T12:00:00');
   const diff = Date.now() - d.getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.round(mins / 60 * 10) / 10;
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return `${hrs}h ago`;
 }
 
 function getGroupKey(dateStr, granularity) {
