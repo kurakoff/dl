@@ -64,33 +64,17 @@ function formatHour(ts) {
   return ts;
 }
 
-// Alt: exact calculation from last data point timestamp
-// function timeAgo(dateStr) {
-//   if (!dateStr) return null;
-//   const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T23:59:59');
-//   const diff = Date.now() - d.getTime();
-//   const mins = Math.floor(diff / 60000);
-//   if (mins < 1) return 'just now';
-//   if (mins < 60) return `${mins}m ago`;
-//   const hrs = Math.round(mins / 60 * 10) / 10;
-//   if (hrs < 24) return `${hrs}h ago`;
-//   const days = Math.floor(hrs / 24);
-//   return `${days}d ago`;
-// }
-
 function timeAgo(dateStr) {
   if (!dateStr) return null;
-  // For hourly timestamps (ISO with T), use exact time
-  // For daily dates (YYYY-MM-DD), assume data available ~next day noon
-  const d = dateStr.includes('T')
-    ? new Date(dateStr)
-    : new Date(dateStr + 'T12:00:00');
+  const d = new Date(dateStr);
   const diff = Date.now() - d.getTime();
   const mins = Math.floor(diff / 60000);
+  if (mins < 0) return null;
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60 * 10) / 10;
-  return `${hrs}h ago`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m ago` : `${h}h ago`;
 }
 
 function formatGroupKey(key, granularity) {
@@ -157,7 +141,7 @@ function MultiTooltip({ active, payload, label, granularity }) {
   );
 }
 
-export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode }) {
+export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp }) {
 
   // Local metrics state — defaults to globalMetrics, resets when global changes
   const [localMetrics, setLocalMetrics] = useState(globalMetrics || ['clicks']);
@@ -210,9 +194,8 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
   const hasLeftAxis = activeMetrics.some(m => m !== 'position');
   const colors = darkMode ? METRIC_COLOR_DARK : METRIC_COLOR_LIGHT;
 
-  // Last data point for "Updated X ago"
-  const lastDate = rows.length > 0 ? rows[rows.length - 1].date : null;
-  const updatedAgo = timeAgo(lastDate);
+  // "Updated X ago" — always from hourly freshness timestamp
+  const updatedAgo = timeAgo(freshTimestamp);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">

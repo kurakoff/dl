@@ -73,6 +73,7 @@ export default function Dashboard() {
   const [endDate,       setEndDate]       = useState(daysAgo(0));
   const [loadingCharts, setLoadingCharts] = useState(false);
   const [toast,         setToast]         = useState('');
+  const [freshness,     setFreshness]     = useState({}); // { siteUrl: lastHourlyTimestamp }
 
   // ── Dashboard state ───────────────────────────────────────────────────────
   const [dashboards,        setDashboards]        = useState([]);
@@ -133,6 +134,24 @@ export default function Dashboard() {
   useEffect(() => { fetchAccounts(); fetchDashboards(); }, [fetchAccounts, fetchDashboards]);
   useEffect(() => {
     api.post('/auth/invite-token').then(r => setInviteUrl(r.data.url)).catch(() => {});
+  }, []);
+
+  // Fetch hourly freshness data once on mount (for "Updated X ago")
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    api.get('/api/analytics', { params: { startDate: yesterday, endDate: today, hourly: 'true' } })
+      .then(res => {
+        const fresh = {};
+        for (const site of res.data.results || []) {
+          if (site.data?.length > 0) {
+            const sorted = [...site.data].sort((a, b) => b.date.localeCompare(a.date));
+            fresh[`${site.accountId}:${site.siteUrl}`] = sorted[0].date;
+          }
+        }
+        setFreshness(fresh);
+      })
+      .catch(() => {});
   }, []);
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
@@ -658,6 +677,7 @@ export default function Dashboard() {
                   globalMetrics={globalMetrics}
                   globalMetricVer={globalMetricVer}
                   darkMode={darkMode}
+                  freshTimestamp={freshness[`${site.accountId}:${site.siteUrl}`]}
                 />
               ))}
             </div>

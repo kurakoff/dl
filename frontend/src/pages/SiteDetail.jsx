@@ -87,31 +87,17 @@ function formatHour(ts) {
   return ts;
 }
 
-// Alt: exact calculation from last data point timestamp
-// function timeAgo(dateStr) {
-//   if (!dateStr) return null;
-//   const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T23:59:59');
-//   const diff = Date.now() - d.getTime();
-//   const mins = Math.floor(diff / 60000);
-//   if (mins < 1) return 'just now';
-//   if (mins < 60) return `${mins}m ago`;
-//   const hrs = Math.round(mins / 60 * 10) / 10;
-//   if (hrs < 24) return `${hrs}h ago`;
-//   const days = Math.floor(hrs / 24);
-//   return `${days}d ago`;
-// }
-
 function timeAgo(dateStr) {
   if (!dateStr) return null;
-  const d = dateStr.includes('T')
-    ? new Date(dateStr)
-    : new Date(dateStr + 'T12:00:00');
+  const d = new Date(dateStr);
   const diff = Date.now() - d.getTime();
   const mins = Math.floor(diff / 60000);
+  if (mins < 0) return null;
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60 * 10) / 10;
-  return `${hrs}h ago`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m ago` : `${h}h ago`;
 }
 
 function getGroupKey(dateStr, granularity) {
@@ -571,6 +557,7 @@ export default function SiteDetail() {
   // Site ownership check
   const [isSiteOwner, setIsSiteOwner] = useState(false);
   const [permissionLevel, setPermissionLevel] = useState(null);
+  const [freshTimestamp, setFreshTimestamp] = useState(null);
 
   useEffect(() => {
     api.get(`/api/accounts/${accountId}/sites`)
@@ -578,6 +565,23 @@ export default function SiteDetail() {
         const site = (res.data.sites || []).find(s => s.url === siteUrl);
         setIsSiteOwner(site?.permissionLevel === 'siteOwner');
         setPermissionLevel(site?.permissionLevel || null);
+      })
+      .catch(() => {});
+  }, [accountId, siteUrl]);
+
+  // Fetch hourly freshness once on mount (for "Updated X ago")
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    api.get('/api/analytics', { params: { startDate: yesterday, endDate: today, hourly: 'true' } })
+      .then(res => {
+        const match = (res.data.results || []).find(
+          r => String(r.accountId) === String(accountId) && r.siteUrl === siteUrl
+        );
+        if (match?.data?.length > 0) {
+          const sorted = [...match.data].sort((a, b) => b.date.localeCompare(a.date));
+          setFreshTimestamp(sorted[0].date);
+        }
       })
       .catch(() => {});
   }, [accountId, siteUrl]);
@@ -758,9 +762,8 @@ export default function SiteDetail() {
   const chartRows = buildChartRows();
   const lastIncomplete = !isHourly && isEndToday && chartRows.length > 1 && chartRows.some(r => r.clicks_d != null);
 
-  // "Updated X ago" from last data point
-  const lastDate = rows.length > 0 ? rows[rows.length - 1].date : null;
-  const updatedAgo = timeAgo(lastDate);
+  // "Updated X ago" — always from hourly freshness
+  const updatedAgo = timeAgo(freshTimestamp);
 
   const tabRows = cache[tab] || [];
 
