@@ -19,7 +19,7 @@ const METRIC_COLOR = METRIC_COLOR_LIGHT;
 const METRIC_LABEL = { clicks: 'Clicks', impressions: 'Impressions', ctr: 'CTR', position: 'Position' };
 const ALL_METRICS = ['clicks', 'impressions', 'ctr', 'position'];
 
-const TABS = ['Queries', 'Pages', 'Countries', 'Devices', 'URL Inspection'];
+const TABS = ['Queries', 'Pages', 'Countries', 'Devices', 'Inspect'];
 const DIM  = { Queries: 'query', Pages: 'page', Countries: 'country', Devices: 'device' };
 
 const COUNTRY = {
@@ -349,7 +349,7 @@ function DevicesView({ rows }) {
   );
 }
 
-// ── URL Inspection ──────────────────────────────────────────────────────────
+// ── Inspect ──────────────────────────────────────────────────────────
 
 const VERDICT_STYLE = {
   PASS:    { label: 'URL is on Google',     bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200 dark:border-green-800', text: 'text-green-700 dark:text-green-400', icon: '✓' },
@@ -654,7 +654,7 @@ export default function SiteDetail() {
     }
   }, [accountId, siteUrl, startDate, endDate, cache]);
 
-  // Fetch tab data (skip for URL Inspection — it has its own fetch)
+  // Fetch tab data (skip for Inspect — it has its own fetch)
   useEffect(() => {
     if (!DIM[tab]) return;
     if (cache[tab] !== undefined) return;
@@ -1002,7 +1002,7 @@ export default function SiteDetail() {
 
           {/* Tab content */}
           <div className="px-6 py-4">
-            {tab === 'URL Inspection' ? (
+            {tab === 'Inspect' ? (
               <UrlInspectionView
                 accountId={accountId}
                 siteUrl={siteUrl}
