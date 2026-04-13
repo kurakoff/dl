@@ -3,6 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts';
+import NotesButton from './NotesButton';
 
 // GSC-style colors per metric (light / dark)
 const METRIC_COLOR_LIGHT = {
@@ -210,6 +211,7 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
             {updatedAgo && (
               <span className="text-[11px] text-gray-400">Updated {updatedAgo}</span>
             )}
+            <NotesButton accountId={site.accountId} siteUrl={site.siteUrl} />
             <a
               href={`/site/${site.accountId}/${encodeURIComponent(site.siteUrl)}`}
               target="_blank"

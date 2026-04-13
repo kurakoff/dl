@@ -87,6 +87,72 @@ router.get('/', async (req, res) => {
   res.json({ results, startDate: start, endDate: end, hourly });
 });
 
+// GET /api/analytics/query-filter?keyword=...&startDate=...&endDate=...
+// Checks each site for the keyword in search queries via GSC dimensionFilterGroups
+router.get('/query-filter', async (req, res) => {
+  const { keyword } = req.query;
+  if (!keyword) return res.status(400).json({ error: 'keyword required' });
+
+  const end   = req.query.endDate   || new Date().toISOString().slice(0, 10);
+  const start = req.query.startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10);
+
+  const db       = getDb();
+  const accounts = db.prepare(
+    'SELECT * FROM connected_accounts WHERE user_id = ?'
+  ).all(req.userId);
+
+  const accountResults = await Promise.all(accounts.map(async (account) => {
+    let client;
+    try {
+      client = await getClientForAccount(account);
+    } catch {
+      return [];
+    }
+
+    const sc = google.searchconsole({ version: 'v1', auth: client });
+
+    let allSites;
+    try {
+      const { data } = await sc.sites.list();
+      allSites = (data.siteEntry || []).map(s => s.siteUrl);
+    } catch {
+      return [];
+    }
+
+    if (!allSites.length) return [];
+
+    return Promise.all(allSites.map(async (siteUrl) => {
+      try {
+        const { data } = await sc.searchanalytics.query({
+          siteUrl,
+          requestBody: {
+            startDate: start,
+            endDate:   end,
+            dimensions: ['query'],
+            dimensionFilterGroups: [{
+              filters: [{
+                dimension: 'query',
+                operator:  'contains',
+                expression: keyword,
+              }],
+            }],
+            rowLimit: 1,
+          },
+        });
+        if (data.rows?.length > 0) {
+          return { accountId: account.id, siteUrl };
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    }));
+  }));
+
+  const matches = accountResults.flat().filter(Boolean);
+  res.json({ matches });
+});
+
 // GET /api/analytics/site-detail?accountId=&siteUrl=&startDate=&endDate=&dimension=
 // dimension: query | page | country | device
 router.get('/site-detail', async (req, res) => {

@@ -137,6 +137,20 @@ function initDb() {
     console.error('Migration (has_indexing_scope) error:', err.message);
   }
 
+  // Create site_notes table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS site_notes (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL,
+      account_id INTEGER NOT NULL,
+      site_url   TEXT NOT NULL,
+      content    TEXT DEFAULT '',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, account_id, site_url)
+    )
+  `);
+
   console.log('Database initialized at', DB_PATH);
 }
 

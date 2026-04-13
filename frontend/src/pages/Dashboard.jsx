@@ -5,6 +5,7 @@ import TrafficChart, { METRIC_COLOR, METRIC_LABEL, ALL_METRICS } from '../compon
 import DateRangePicker from '../components/DateRangePicker';
 import MetricFilter, { applyMetricFilters } from '../components/MetricFilter';
 import TrendFilter, { applyTrendFilter } from '../components/TrendFilter';
+import QueryFilter from '../components/QueryFilter';
 import UserMenu from '../components/UserMenu';
 import SettingsModal from '../components/SettingsModal';
 import AccountsModal from '../components/AccountsModal';
@@ -83,6 +84,7 @@ export default function Dashboard() {
   const [siteSearch,        setSiteSearch]        = useState('');
   const [metricFilters,     setMetricFilters]     = useState([]);
   const [trendFilter,       setTrendFilter]       = useState({ trends: [], metric: 'clicks' });
+  const [queryFilterMatches, setQueryFilterMatches] = useState(null);
   const [sidebarCollapsed,  setSidebarCollapsed]  = useState(false);
   const [granularity,       setGranularity]       = useState('day');
   const [inviteUrl,         setInviteUrl]         = useState('');
@@ -228,11 +230,15 @@ export default function Dashboard() {
       })()
     : analytics;
 
+  const queryFiltered = queryFilterMatches
+    ? displayedAnalytics.filter(a => queryFilterMatches.has(`${a.accountId}:${a.siteUrl}`))
+    : displayedAnalytics;
+
   const searchedAnalytics = applyTrendFilter(
     applyMetricFilters(
       siteSearch
-        ? displayedAnalytics.filter(a => shortUrl(a.siteUrl).toLowerCase().includes(siteSearch.toLowerCase()))
-        : displayedAnalytics,
+        ? queryFiltered.filter(a => shortUrl(a.siteUrl).toLowerCase().includes(siteSearch.toLowerCase()))
+        : queryFiltered,
       metricFilters
     ),
     trendFilter
@@ -559,6 +565,7 @@ export default function Dashboard() {
 
             <MetricFilter filters={metricFilters} onChange={setMetricFilters} />
             <TrendFilter value={trendFilter} onChange={setTrendFilter} />
+            <QueryFilter startDate={startDate} endDate={endDate} onFilterChange={setQueryFilterMatches} />
 
             {/* Active dashboard badge */}
             {activeDashboardId && (
