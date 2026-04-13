@@ -41,6 +41,7 @@ app.use('/api/analytics',  analyticsRoutes);
 app.use('/api/dashboards', require('./routes/dashboards'));
 app.use('/api/indexing',   require('./routes/indexing'));
 app.use('/api/notes',      require('./routes/notes'));
+app.use('/api/safety',     require('./routes/safety'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 

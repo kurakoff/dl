@@ -10,6 +10,8 @@ import UserMenu from '../components/UserMenu';
 import SettingsModal from '../components/SettingsModal';
 import AccountsModal from '../components/AccountsModal';
 import SitePickerModal from '../components/SitePickerModal';
+import SafetyBanner from '../components/SafetyBanner';
+import SafetyAlertModal from '../components/SafetyAlertModal';
 
 function daysAgo(n) {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
@@ -97,6 +99,17 @@ export default function Dashboard() {
   const [globalMetrics,  setGlobalMetrics]  = useState(['clicks']);
   const [darkMode,       setDarkMode]       = useState(() => localStorage.getItem('theme') === 'dark');
 
+  // ── Safety state ──────────────────────────────────────────────────────────
+  const [safetyStatus, setSafetyStatus] = useState({});
+  const [safetyChecking, setSafetyChecking] = useState(false);
+  const [safetyFilter, setSafetyFilter] = useState('all');
+  const [safetyAlertDismissed, setSafetyAlertDismissed] = useState(() =>
+    sessionStorage.getItem('safety_alert_dismissed') === 'true'
+  );
+  const [safetyBannerDismissed, setSafetyBannerDismissed] = useState(() =>
+    sessionStorage.getItem('safety_banner_dismissed') === 'true'
+  );
+
   // Apply dark class to <html>
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
@@ -165,6 +178,51 @@ export default function Dashboard() {
       .catch(() => {});
   }, []);
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
+
+  // ── Safety: load cached status, then auto-recheck if stale ──────────────
+  const runSafetyCheck = useCallback(async (sitesList) => {
+    if (!sitesList || sitesList.length === 0) return;
+    setSafetyChecking(true);
+    try {
+      const { data } = await api.post('/api/safety/check', {
+        sites: sitesList.map(s => ({ accountId: s.accountId, siteUrl: s.siteUrl })),
+      });
+      setSafetyStatus(prev => ({ ...prev, ...data }));
+    } catch { /* ignore */ }
+    finally { setSafetyChecking(false); }
+  }, []);
+
+  useEffect(() => {
+    // Load cached safety status
+    api.get('/api/safety/status')
+      .then(r => {
+        setSafetyStatus(r.data);
+        // Auto-recheck if any entry is older than 6 hours, or if no cache yet
+        const SIX_HOURS = 6 * 60 * 60 * 1000;
+        const now = Date.now();
+        const hasStale = Object.values(r.data).some(v => !v.checkedAt || (now - new Date(v.checkedAt).getTime()) > SIX_HOURS);
+        const noCacheYet = Object.keys(r.data).length === 0;
+        if (hasStale || noCacheYet) {
+          // Wait for analytics to be loaded before checking
+          // We'll trigger via the analytics dependency below
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Auto-recheck when analytics are loaded and cache is stale/empty
+  const safetyAutoChecked = useRef(false);
+  useEffect(() => {
+    if (safetyAutoChecked.current || analytics.length === 0) return;
+    const SIX_HOURS = 6 * 60 * 60 * 1000;
+    const now = Date.now();
+    const values = Object.values(safetyStatus);
+    const hasStale = values.length === 0 || values.some(v => !v.checkedAt || (now - new Date(v.checkedAt).getTime()) > SIX_HOURS);
+    if (hasStale) {
+      safetyAutoChecked.current = true;
+      runSafetyCheck(analytics);
+    }
+  }, [analytics, safetyStatus, runSafetyCheck]);
 
   // ── Dashboard CRUD ────────────────────────────────────────────────────────
   const openCreateForm = () => {
@@ -243,11 +301,15 @@ export default function Dashboard() {
     ? displayedAnalytics.filter(a => queryFilterMatches.has(`${a.accountId}:${a.siteUrl}`))
     : displayedAnalytics;
 
+  const safetyFiltered = safetyFilter === 'threats'
+    ? queryFiltered.filter(a => safetyStatus[`${a.accountId}:${a.siteUrl}`]?.status === 'threat')
+    : queryFiltered;
+
   const searchedAnalytics = applyTrendFilter(
     applyMetricFilters(
       siteSearch
-        ? queryFiltered.filter(a => shortUrl(a.siteUrl).toLowerCase().includes(siteSearch.toLowerCase()))
-        : queryFiltered,
+        ? safetyFiltered.filter(a => shortUrl(a.siteUrl).toLowerCase().includes(siteSearch.toLowerCase()))
+        : safetyFiltered,
       metricFilters
     ),
     trendFilter
@@ -274,6 +336,15 @@ export default function Dashboard() {
     ctr:         totals._rows > 0 ? `${(totals.ctr / totals._rows).toFixed(2)}%` : '0%',
     position:    totals._rows > 0 ? (totals.position / totals._rows).toFixed(1) : '0',
   };
+
+  // Safety: threats among displayed sites
+  const threatSites = Object.entries(safetyStatus)
+    .filter(([, v]) => v.status === 'threat')
+    .map(([key, v]) => {
+      const [accountId, ...rest] = key.split(':');
+      return { accountId, siteUrl: rest.join(':'), threatTypes: v.threatTypes };
+    });
+  const threatCount = threatSites.length;
 
   // Global metric version — incremented on each global toggle to signal TrafficChart to reset local overrides
   const [globalMetricVer, setGlobalMetricVer] = useState(0);
@@ -576,6 +647,37 @@ export default function Dashboard() {
             <TrendFilter value={trendFilter} onChange={setTrendFilter} />
             <QueryFilter startDate={startDate} endDate={endDate} sites={displayedAnalytics} onFilterChange={setQueryFilterMatches} />
 
+            {/* Threats filter toggle */}
+            {threatCount > 0 && (
+              <button
+                onClick={() => setSafetyFilter(f => f === 'threats' ? 'all' : 'threats')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition ${
+                  safetyFilter === 'threats'
+                    ? 'bg-red-600 text-white border-red-600 shadow-sm'
+                    : 'bg-white dark:bg-gray-700 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:border-red-300 dark:hover:border-red-700'
+                }`}
+              >
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2L3.4 5.6v5.8c0 5.1 3.7 9.8 8.6 11 4.9-1.2 8.6-5.9 8.6-11V5.6L12 2zm1 12h-2v-2h2v2zm0-4h-2V6h2v4z"/>
+                </svg>
+                Threats ({threatCount})
+              </button>
+            )}
+
+            {/* Safe Browsing recheck button */}
+            <button
+              onClick={() => runSafetyCheck(analytics)}
+              disabled={safetyChecking}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 transition disabled:opacity-50"
+              title="Recheck all sites with Google Safe Browsing"
+            >
+              <svg className={`w-3.5 h-3.5 ${safetyChecking ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M20.618 5.984A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              {safetyChecking ? 'Checking…' : 'Safe Browsing'}
+            </button>
+
             {/* Active dashboard badge */}
             {activeDashboardId && (
               <div className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300 font-medium">
@@ -602,6 +704,15 @@ export default function Dashboard() {
             onToggleDark={() => setDarkMode(d => !d)}
           />
         </div>
+
+        {/* ── Safety banner ───────────────────────────────────────────────── */}
+        {threatCount > 0 && !safetyBannerDismissed && (
+          <SafetyBanner
+            threatCount={threatCount}
+            onShowThreats={() => { setSafetyFilter('threats'); setSafetyBannerDismissed(true); sessionStorage.setItem('safety_banner_dismissed', 'true'); }}
+            onDismiss={() => { setSafetyBannerDismissed(true); sessionStorage.setItem('safety_banner_dismissed', 'true'); }}
+          />
+        )}
 
         {/* ── Content area ─────────────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto p-6 dark:text-gray-200">
@@ -696,6 +807,7 @@ export default function Dashboard() {
                   freshTimestamp={freshness[`${site.accountId}:${site.siteUrl}`]}
                   hasNote={siteNotes.has(`${site.accountId}:${site.siteUrl}`)}
                   onNoteChange={fetchNotesList}
+                  safetyStatus={safetyStatus[`${site.accountId}:${site.siteUrl}`]}
                 />
               ))}
             </div>
@@ -769,6 +881,22 @@ export default function Dashboard() {
           accounts={accounts}
           onSave={handleSitePickerSave}
           onClose={() => setShowSitePicker(false)}
+        />
+      )}
+
+      {/* Safety alert modal — once per session */}
+      {threatCount > 0 && !safetyAlertDismissed && (
+        <SafetyAlertModal
+          threats={threatSites}
+          onShowThreats={() => {
+            setSafetyFilter('threats');
+            setSafetyAlertDismissed(true);
+            sessionStorage.setItem('safety_alert_dismissed', 'true');
+          }}
+          onClose={() => {
+            setSafetyAlertDismissed(true);
+            sessionStorage.setItem('safety_alert_dismissed', 'true');
+          }}
         />
       )}
 

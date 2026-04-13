@@ -151,6 +151,21 @@ function initDb() {
     )
   `);
 
+  // Create safe_browsing_cache table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS safe_browsing_cache (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      account_id INTEGER NOT NULL,
+      site_url TEXT NOT NULL,
+      status TEXT DEFAULT 'clean',
+      threat_types TEXT DEFAULT '',
+      checked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, account_id, site_url)
+    )
+  `);
+
   console.log('Database initialized at', DB_PATH);
 }
 

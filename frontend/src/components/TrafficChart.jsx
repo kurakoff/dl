@@ -142,7 +142,7 @@ function MultiTooltip({ active, payload, label, granularity }) {
   );
 }
 
-export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange }) {
+export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange, safetyStatus }) {
 
   // Local metrics state — defaults to globalMetrics, resets when global changes
   const [localMetrics, setLocalMetrics] = useState(globalMetrics || ['clicks']);
@@ -208,6 +208,20 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
             <span className="ml-2 text-xs font-normal text-gray-400">{site.accountEmail}</span>
           </p>
           <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+            {safetyStatus?.status === 'clean' && (
+              <span title="Safe (Google Safe Browsing)" className="text-green-500">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2L3.4 5.6v5.8c0 5.1 3.7 9.8 8.6 11 4.9-1.2 8.6-5.9 8.6-11V5.6L12 2zm-1.4 14.2l-3.5-3.5 1.4-1.4 2.1 2.1 5.3-5.3 1.4 1.4-6.7 6.7z"/>
+                </svg>
+              </span>
+            )}
+            {safetyStatus?.status === 'threat' && (
+              <span title={`Threats: ${safetyStatus.threatTypes}`} className="text-red-500">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2L3.4 5.6v5.8c0 5.1 3.7 9.8 8.6 11 4.9-1.2 8.6-5.9 8.6-11V5.6L12 2zm1 12h-2v-2h2v2zm0-4h-2V6h2v4z"/>
+                </svg>
+              </span>
+            )}
             {updatedAgo && (
               <span className="text-[11px] text-gray-400">Updated {updatedAgo}</span>
             )}
