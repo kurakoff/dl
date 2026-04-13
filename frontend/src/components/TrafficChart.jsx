@@ -142,7 +142,7 @@ function MultiTooltip({ active, payload, label, granularity }) {
   );
 }
 
-export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp }) {
+export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange }) {
 
   // Local metrics state — defaults to globalMetrics, resets when global changes
   const [localMetrics, setLocalMetrics] = useState(globalMetrics || ['clicks']);
@@ -211,7 +211,6 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
             {updatedAgo && (
               <span className="text-[11px] text-gray-400">Updated {updatedAgo}</span>
             )}
-            <NotesButton accountId={site.accountId} siteUrl={site.siteUrl} />
             <a
               href={`/site/${site.accountId}/${encodeURIComponent(site.siteUrl)}`}
               target="_blank"
@@ -225,6 +224,7 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
               </svg>
               Details
             </a>
+            <NotesButton accountId={site.accountId} siteUrl={site.siteUrl} hasNote={hasNote} onNoteChange={onNoteChange} />
           </div>
         </div>
 

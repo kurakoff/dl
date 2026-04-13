@@ -75,6 +75,7 @@ export default function Dashboard() {
   const [loadingCharts, setLoadingCharts] = useState(false);
   const [toast,         setToast]         = useState('');
   const [freshness,     setFreshness]     = useState({}); // { siteUrl: lastHourlyTimestamp }
+  const [siteNotes,     setSiteNotes]     = useState(new Set()); // "accountId:siteUrl" with notes
 
   // ── Dashboard state ───────────────────────────────────────────────────────
   const [dashboards,        setDashboards]        = useState([]);
@@ -137,6 +138,14 @@ export default function Dashboard() {
   useEffect(() => {
     api.post('/auth/invite-token').then(r => setInviteUrl(r.data.url)).catch(() => {});
   }, []);
+
+  // Fetch which sites have notes (for indicator)
+  const fetchNotesList = useCallback(() => {
+    api.get('/api/notes/list')
+      .then(r => setSiteNotes(new Set(r.data.map(n => `${n.accountId}:${n.siteUrl}`))))
+      .catch(() => {});
+  }, []);
+  useEffect(() => { fetchNotesList(); }, [fetchNotesList]);
 
   // Fetch hourly freshness data once on mount (for "Updated X ago")
   useEffect(() => {
@@ -685,6 +694,8 @@ export default function Dashboard() {
                   globalMetricVer={globalMetricVer}
                   darkMode={darkMode}
                   freshTimestamp={freshness[`${site.accountId}:${site.siteUrl}`]}
+                  hasNote={siteNotes.has(`${site.accountId}:${site.siteUrl}`)}
+                  onNoteChange={fetchNotesList}
                 />
               ))}
             </div>

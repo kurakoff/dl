@@ -5,6 +5,15 @@ const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
 router.use(requireAuth);
 
+// GET /api/notes/list — returns all accountId:siteUrl pairs that have non-empty notes
+router.get('/list', (req, res) => {
+  const db = getDb();
+  const rows = db.prepare(
+    "SELECT account_id, site_url FROM site_notes WHERE user_id = ? AND content != ''"
+  ).all(req.userId);
+  res.json(rows.map(r => ({ accountId: r.account_id, siteUrl: r.site_url })));
+});
+
 // GET /api/notes/:accountId/:siteUrl
 router.get('/:accountId/:siteUrl', (req, res) => {
   const db = getDb();
