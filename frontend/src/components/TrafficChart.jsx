@@ -142,7 +142,7 @@ function MultiTooltip({ active, payload, label, granularity }) {
   );
 }
 
-export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange, safetyStatus }) {
+export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange, safetyStatus, duplicateIn }) {
 
   // Local metrics state — defaults to globalMetrics, resets when global changes
   const [localMetrics, setLocalMetrics] = useState(globalMetrics || ['clicks']);
@@ -206,6 +206,17 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
           <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
             {shortUrl(site.siteUrl)}
             <span className="ml-2 text-xs font-normal text-gray-400">{site.accountEmail}</span>
+            {duplicateIn && duplicateIn.length > 0 && (
+              <span
+                className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 cursor-help"
+                title={`Дубль — также в: ${duplicateIn.join(', ')}`}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Duplicate
+              </span>
+            )}
           </p>
           <div className="flex items-center gap-3 flex-shrink-0 ml-2">
             {safetyStatus?.status === 'clean' && (

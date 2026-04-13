@@ -297,6 +297,28 @@ export default function Dashboard() {
       })()
     : analytics;
 
+  // Detect duplicate domains across different accounts
+  const duplicateDomains = (() => {
+    const domainAccounts = new Map(); // normalized domain → Set of accountIds
+    for (const a of analytics) {
+      const domain = shortUrl(a.siteUrl);
+      if (!domainAccounts.has(domain)) domainAccounts.set(domain, new Set());
+      domainAccounts.get(domain).add(String(a.accountId));
+    }
+    const dupes = new Map(); // "accountId:siteUrl" → [other account emails]
+    for (const a of analytics) {
+      const domain = shortUrl(a.siteUrl);
+      const accounts = domainAccounts.get(domain);
+      if (accounts && accounts.size > 1) {
+        const otherEmails = analytics
+          .filter(o => shortUrl(o.siteUrl) === domain && String(o.accountId) !== String(a.accountId))
+          .map(o => o.accountEmail);
+        dupes.set(`${a.accountId}:${a.siteUrl}`, [...new Set(otherEmails)]);
+      }
+    }
+    return dupes;
+  })();
+
   const queryFiltered = queryFilterMatches
     ? displayedAnalytics.filter(a => queryFilterMatches.has(`${a.accountId}:${a.siteUrl}`))
     : displayedAnalytics;
@@ -808,6 +830,7 @@ export default function Dashboard() {
                   hasNote={siteNotes.has(`${site.accountId}:${site.siteUrl}`)}
                   onNoteChange={fetchNotesList}
                   safetyStatus={safetyStatus[`${site.accountId}:${site.siteUrl}`]}
+                  duplicateIn={duplicateDomains.get(`${site.accountId}:${site.siteUrl}`)}
                 />
               ))}
             </div>
