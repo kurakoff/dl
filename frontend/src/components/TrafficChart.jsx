@@ -224,8 +224,10 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
               </svg>
               Details
             </a>
-            <NotesButton accountId={site.accountId} siteUrl={site.siteUrl} hasNote={hasNote} onNoteChange={onNoteChange} />
           </div>
+        </div>
+        <div className="flex justify-end px-0 mb-1">
+          <NotesButton accountId={site.accountId} siteUrl={site.siteUrl} hasNote={hasNote} onNoteChange={onNoteChange} />
         </div>
 
         {/* Local metric toggle pills */}
