@@ -565,7 +565,7 @@ export default function Dashboard() {
 
             <MetricFilter filters={metricFilters} onChange={setMetricFilters} />
             <TrendFilter value={trendFilter} onChange={setTrendFilter} />
-            <QueryFilter startDate={startDate} endDate={endDate} onFilterChange={setQueryFilterMatches} />
+            <QueryFilter startDate={startDate} endDate={endDate} sites={displayedAnalytics} onFilterChange={setQueryFilterMatches} />
 
             {/* Active dashboard badge */}
             {activeDashboardId && (

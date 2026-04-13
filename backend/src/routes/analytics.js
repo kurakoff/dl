@@ -87,69 +87,71 @@ router.get('/', async (req, res) => {
   res.json({ results, startDate: start, endDate: end, hourly });
 });
 
-// GET /api/analytics/query-filter?keyword=...&startDate=...&endDate=...
-// Checks each site for the keyword in search queries via GSC dimensionFilterGroups
-router.get('/query-filter', async (req, res) => {
-  const { keyword } = req.query;
+// POST /api/analytics/query-filter
+// Body: { keyword, startDate, endDate, sites: [{accountId, siteUrl}] }
+// Checks only the provided sites for keyword via GSC dimensionFilterGroups
+router.post('/query-filter', async (req, res) => {
+  const { keyword, startDate, endDate, sites } = req.body;
   if (!keyword) return res.status(400).json({ error: 'keyword required' });
+  if (!sites?.length) return res.json({ matches: [] });
 
-  const end   = req.query.endDate   || new Date().toISOString().slice(0, 10);
-  const start = req.query.startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10);
+  const end   = endDate   || new Date().toISOString().slice(0, 10);
+  const start = startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10);
 
-  const db       = getDb();
-  const accounts = db.prepare(
-    'SELECT * FROM connected_accounts WHERE user_id = ?'
-  ).all(req.userId);
+  const db = getDb();
 
-  const accountResults = await Promise.all(accounts.map(async (account) => {
+  // Group sites by accountId
+  const byAccount = new Map();
+  for (const s of sites) {
+    const key = String(s.accountId);
+    if (!byAccount.has(key)) byAccount.set(key, []);
+    byAccount.get(key).push(s.siteUrl);
+  }
+
+  // Process each account
+  const matches = [];
+  const BATCH = 10;
+
+  for (const [accountId, siteUrls] of byAccount) {
+    const account = db.prepare(
+      'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ?'
+    ).get(accountId, req.userId);
+    if (!account) continue;
+
     let client;
-    try {
-      client = await getClientForAccount(account);
-    } catch {
-      return [];
-    }
-
+    try { client = await getClientForAccount(account); } catch { continue; }
     const sc = google.searchconsole({ version: 'v1', auth: client });
 
-    let allSites;
-    try {
-      const { data } = await sc.sites.list();
-      allSites = (data.siteEntry || []).map(s => s.siteUrl);
-    } catch {
-      return [];
-    }
-
-    if (!allSites.length) return [];
-
-    return Promise.all(allSites.map(async (siteUrl) => {
-      try {
-        const { data } = await sc.searchanalytics.query({
-          siteUrl,
-          requestBody: {
-            startDate: start,
-            endDate:   end,
-            dimensions: ['query'],
-            dimensionFilterGroups: [{
-              filters: [{
-                dimension: 'query',
-                operator:  'contains',
-                expression: keyword,
+    // Process in batches of BATCH
+    for (let i = 0; i < siteUrls.length; i += BATCH) {
+      const batch = siteUrls.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(async (siteUrl) => {
+        try {
+          const { data } = await sc.searchanalytics.query({
+            siteUrl,
+            requestBody: {
+              startDate: start,
+              endDate:   end,
+              dimensions: ['query'],
+              dimensionFilterGroups: [{
+                filters: [{
+                  dimension: 'query',
+                  operator:  'contains',
+                  expression: keyword,
+                }],
               }],
-            }],
-            rowLimit: 1,
-          },
-        });
-        if (data.rows?.length > 0) {
-          return { accountId: account.id, siteUrl };
+              rowLimit: 1,
+            },
+          });
+          return data.rows?.length > 0 ? { accountId: Number(accountId), siteUrl } : null;
+        } catch {
+          return null;
         }
-        return null;
-      } catch {
-        return null;
-      }
-    }));
-  }));
+      }));
+      matches.push(...results.filter(Boolean));
+    }
+  }
 
-  const matches = accountResults.flat().filter(Boolean);
   res.json({ matches });
 });
 

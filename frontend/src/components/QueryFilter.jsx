@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import api from '../api/client';
 
-export default function QueryFilter({ startDate, endDate, onFilterChange }) {
+export default function QueryFilter({ startDate, endDate, sites, onFilterChange }) {
   const [keyword, setKeyword] = useState('');
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(false);
@@ -11,8 +11,11 @@ export default function QueryFilter({ startDate, endDate, onFilterChange }) {
     if (!trimmed) return;
     setLoading(true);
     try {
-      const res = await api.get('/api/analytics/query-filter', {
-        params: { keyword: trimmed, startDate, endDate },
+      const res = await api.post('/api/analytics/query-filter', {
+        keyword: trimmed,
+        startDate,
+        endDate,
+        sites: (sites || []).map(s => ({ accountId: s.accountId, siteUrl: s.siteUrl })),
       });
       const matchSet = new Set(
         (res.data.matches || []).map(m => `${m.accountId}:${m.siteUrl}`)
