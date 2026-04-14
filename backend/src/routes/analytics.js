@@ -220,6 +220,7 @@ router.get('/site-detail', async (req, res) => {
 // Returns date-series chart data for a single site, optionally filtered by dimensions
 router.get('/site-chart', async (req, res) => {
   const { accountId, siteUrl, startDate, endDate } = req.query;
+  const hourly = req.query.hourly === 'true';
   if (!accountId || !siteUrl) return res.status(400).json({ error: 'Missing params' });
 
   const db      = getDb();
@@ -242,9 +243,10 @@ router.get('/site-chart', async (req, res) => {
     const requestBody = {
       startDate:  startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10),
       endDate:    endDate   || new Date().toISOString().slice(0, 10),
-      dimensions: ['date'],
-      rowLimit:   500,
+      dimensions: hourly ? ['hour'] : ['date'],
+      rowLimit:   hourly ? 2500 : 500,
     };
+    if (hourly) requestBody.dataState = 'hourly_all';
 
     // Parse multi-dimension filters
     let filters = {};

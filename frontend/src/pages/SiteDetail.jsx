@@ -604,13 +604,11 @@ export default function SiteDetail() {
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
     const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-    api.get('/api/analytics', { params: { startDate: yesterday, endDate: today, hourly: 'true' } })
+    api.get('/api/analytics/site-chart', { params: { accountId, siteUrl, startDate: yesterday, endDate: today, hourly: 'true' } })
       .then(res => {
-        const match = (res.data.results || []).find(
-          r => String(r.accountId) === String(accountId) && r.siteUrl === siteUrl
-        );
-        if (match?.data?.length > 0) {
-          const sorted = [...match.data].sort((a, b) => b.date.localeCompare(a.date));
+        const rows = res.data.data || [];
+        if (rows.length > 0) {
+          const sorted = [...rows].sort((a, b) => b.date.localeCompare(a.date));
           setFreshTimestamp(sorted[0].date);
         }
       })
@@ -624,30 +622,21 @@ export default function SiteDetail() {
   const filtersKey = JSON.stringify(dimFilters);
   const hasFilters = Object.keys(dimFilters).length > 0;
 
-  // Fetch traffic data — uses site-chart when dimension filters are active
+  // Fetch traffic data — always uses site-chart endpoint for this site
   useEffect(() => {
     let cancelled = false;
     setLoadingChart(true);
-    (async () => {
-      try {
-        if (hasFilters) {
-          const params = { accountId, siteUrl, startDate, endDate, filters: filtersKey };
-          const res = await api.get('/api/analytics/site-chart', { params });
-          if (!cancelled) setSiteData({ accountId, siteUrl, data: res.data.data || [] });
-        } else {
-          const params = { startDate, endDate };
-          if (isHourly) params.hourly = 'true';
-          const res = await api.get('/api/analytics', { params });
-          if (cancelled) return;
-          const results = res.data.results || [];
-          const match = results.find(
-            r => String(r.accountId) === String(accountId) && r.siteUrl === siteUrl
-          );
-          setSiteData(match || null);
-        }
-      } catch { /* ignore */ }
-      finally { if (!cancelled) setLoadingChart(false); }
-    })();
+    const params = { accountId, siteUrl, startDate, endDate };
+    if (isHourly) params.hourly = 'true';
+    if (hasFilters) params.filters = filtersKey;
+
+    api.get('/api/analytics/site-chart', { params })
+      .then(res => {
+        if (!cancelled) setSiteData({ accountId, siteUrl, data: res.data.data || [] });
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingChart(false); });
+
     return () => { cancelled = true; };
   }, [startDate, endDate, accountId, siteUrl, isHourly, filtersKey]);
 
