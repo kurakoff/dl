@@ -227,7 +227,7 @@ function IndexButton({ url, onRequest }) {
 
 // ── DataTable (Queries / Pages) ──────────────────────────────────────────────
 
-function DataTable({ rows, isPage, onRequestIndexing }) {
+function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey }) {
   const [col, setCol] = useState('clicks');
   const [asc, setAsc] = useState(false);
 
@@ -261,7 +261,11 @@ function DataTable({ rows, isPage, onRequestIndexing }) {
         </thead>
         <tbody>
           {sorted.map((row, i) => (
-            <tr key={i} className="border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50/80 dark:hover:bg-gray-700/30">
+            <tr
+              key={i}
+              onClick={() => onRowClick?.(row.key)}
+              className={`border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50/80 dark:hover:bg-gray-700/30 ${onRowClick ? 'cursor-pointer' : ''} ${activeKey === row.key ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+            >
               <td className="px-3 py-2 text-xs text-gray-300 dark:text-gray-600 text-center">{i + 1}</td>
               <td className="px-3 py-2 text-gray-800 dark:text-gray-200 max-w-xs">
                 <span className="block truncate" title={row.key}>
@@ -273,7 +277,7 @@ function DataTable({ rows, isPage, onRequestIndexing }) {
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtCtr(row.ctr)}</td>
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtPos(row.position)}</td>
               {isPage && onRequestIndexing && (
-                <td className="px-2 py-2 text-center">
+                <td className="px-2 py-2 text-center" onClick={e => e.stopPropagation()}>
                   <IndexButton url={row.key} onRequest={onRequestIndexing} />
                 </td>
               )}
@@ -287,14 +291,18 @@ function DataTable({ rows, isPage, onRequestIndexing }) {
 
 // ── Countries ────────────────────────────────────────────────────────────────
 
-function CountriesView({ rows }) {
+function CountriesView({ rows, onRowClick, activeKey }) {
   const max = Math.max(...rows.map(r => r.clicks || 0), 1);
   return (
     <div className="space-y-2.5 overflow-auto" style={{ maxHeight: '520px' }}>
       {rows.map((row, i) => {
         const pct = ((row.clicks || 0) / max) * 100;
         return (
-          <div key={i} className="flex items-center gap-3 pr-1">
+          <div
+            key={i}
+            onClick={() => onRowClick?.(row.key)}
+            className={`flex items-center gap-3 pr-1 rounded-lg px-1 py-0.5 ${onRowClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30' : ''} ${activeKey === row.key ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+          >
             <span className="text-xs text-gray-300 dark:text-gray-600 w-5 text-right flex-shrink-0">{i + 1}</span>
             <span className="text-sm text-gray-700 dark:text-gray-200 w-36 truncate flex-shrink-0">{countryName(row.key)}</span>
             <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
@@ -302,6 +310,7 @@ function CountriesView({ rows }) {
             </div>
             <div className="flex gap-3 text-xs text-right flex-shrink-0">
               <span className="font-medium text-gray-700 dark:text-gray-200 w-14">{fmtNum(row.clicks)}</span>
+              <span className="text-gray-400 w-16 hidden sm:block">{fmtNum(row.impressions)}</span>
               <span className="text-gray-400 w-16 hidden sm:block">{fmtCtr(row.ctr)}</span>
               <span className="text-gray-400 w-8 hidden sm:block">{fmtPos(row.position)}</span>
             </div>
@@ -317,7 +326,7 @@ function CountriesView({ rows }) {
 const DEV_COLOR = { DESKTOP: '#1a73e8', MOBILE: '#1e8e3e', TABLET: '#f29900' };
 const DEV_LABEL = { DESKTOP: 'Desktop', MOBILE: 'Mobile', TABLET: 'Tablet' };
 
-function DevicesView({ rows }) {
+function DevicesView({ rows, onRowClick, activeKey }) {
   const total = rows.reduce((s, r) => s + (r.clicks || 0), 0) || 1;
   return (
     <div className="space-y-5 py-2">
@@ -326,7 +335,11 @@ function DevicesView({ rows }) {
         const pct   = ((row.clicks || 0) / total) * 100;
         const color = DEV_COLOR[key] || '#9aa0a6';
         return (
-          <div key={i}>
+          <div
+            key={i}
+            onClick={() => onRowClick?.(row.key)}
+            className={`rounded-lg p-2 -mx-2 ${onRowClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30' : ''} ${activeKey === row.key ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+          >
             <div className="flex justify-between items-baseline mb-1.5">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{DEV_LABEL[key] || row.key}</span>
               <div className="flex gap-4 text-sm text-gray-500 dark:text-gray-400">
@@ -548,6 +561,9 @@ export default function SiteDetail() {
   const [tabLoading, setTabLoading] = useState(false);
   const [tabError, setTabError]     = useState('');
 
+  // Dimension filter (like GSC: click a row to filter everything)
+  const [dimFilter, setDimFilter] = useState(null); // { dimension: 'country', value: 'deu' }
+
   // Toast
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
 
@@ -590,21 +606,29 @@ export default function SiteDetail() {
   const daysDiff = Math.round((new Date(endDate) - new Date(startDate)) / 86_400_000);
   const isHourly = daysDiff <= 1;
 
-  // Fetch traffic data
+  // Fetch traffic data — uses site-chart when a dimension filter is active
   const fetchTraffic = useCallback(async () => {
     setLoadingChart(true);
     try {
-      const params = { startDate, endDate };
-      if (isHourly) params.hourly = 'true';
-      const res = await api.get('/api/analytics', { params });
-      const results = res.data.results || [];
-      const match = results.find(
-        r => String(r.accountId) === String(accountId) && r.siteUrl === siteUrl
-      );
-      setSiteData(match || null);
+      if (dimFilter) {
+        // Filtered chart via dedicated endpoint
+        const params = { accountId, siteUrl, startDate, endDate, filterDim: dimFilter.dimension, filterVal: dimFilter.value };
+        const res = await api.get('/api/analytics/site-chart', { params });
+        setSiteData({ accountId, siteUrl, data: res.data.data || [] });
+      } else {
+        // Unfiltered — use aggregate endpoint
+        const params = { startDate, endDate };
+        if (isHourly) params.hourly = 'true';
+        const res = await api.get('/api/analytics', { params });
+        const results = res.data.results || [];
+        const match = results.find(
+          r => String(r.accountId) === String(accountId) && r.siteUrl === siteUrl
+        );
+        setSiteData(match || null);
+      }
     } catch { /* ignore */ }
     finally { setLoadingChart(false); }
-  }, [startDate, endDate, accountId, siteUrl, isHourly]);
+  }, [startDate, endDate, accountId, siteUrl, isHourly, dimFilter]);
 
   useEffect(() => { fetchTraffic(); }, [fetchTraffic]);
 
@@ -678,16 +702,20 @@ export default function SiteDetail() {
     if (cache[tab] !== undefined) return;
     setTabLoading(true);
     setTabError('');
-    api.get('/api/analytics/site-detail', {
-      params: { accountId, siteUrl, startDate, endDate, dimension: DIM[tab] },
-    })
+    const params = { accountId, siteUrl, startDate, endDate, dimension: DIM[tab] };
+    // Apply dimension filter if active and not for the same dimension
+    if (dimFilter && dimFilter.dimension !== DIM[tab]) {
+      params.filterDim = dimFilter.dimension;
+      params.filterVal = dimFilter.value;
+    }
+    api.get('/api/analytics/site-detail', { params })
       .then(res => setCache(c => ({ ...c, [tab]: res.data.rows || [] })))
       .catch(() => setTabError('Failed to load data.'))
       .finally(() => setTabLoading(false));
-  }, [tab, accountId, siteUrl, startDate, endDate]);
+  }, [tab, accountId, siteUrl, startDate, endDate, dimFilter]);
 
-  // Reset tab cache when dates change
-  useEffect(() => { setCache({}); }, [startDate, endDate]);
+  // Reset tab cache when dates or filter change
+  useEffect(() => { setCache({}); }, [startDate, endDate, dimFilter]);
 
   // Chart data — skip aggregation for hourly, sort by timestamp
   const effectiveGranularity = isHourly ? 'hour' : granularity;
@@ -766,6 +794,24 @@ export default function SiteDetail() {
   const updatedAgo = timeAgo(freshTimestamp);
 
   const tabRows = cache[tab] || [];
+
+  // Dimension filter helpers
+  const DIM_LABEL = { query: 'Query', page: 'Page', country: 'Country', device: 'Device' };
+  const filterDisplayVal = dimFilter
+    ? (dimFilter.dimension === 'country' ? countryName(dimFilter.value)
+      : dimFilter.dimension === 'device' ? (DEV_LABEL[dimFilter.value?.toUpperCase()] || dimFilter.value)
+      : dimFilter.dimension === 'page' ? shortPage(dimFilter.value)
+      : dimFilter.value)
+    : '';
+
+  const handleDimClick = (dimension, value) => {
+    // Toggle off if same filter clicked again
+    if (dimFilter && dimFilter.dimension === dimension && dimFilter.value === value) {
+      setDimFilter(null);
+    } else {
+      setDimFilter({ dimension, value });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -997,6 +1043,22 @@ export default function SiteDetail() {
       {/* Tabs */}
       <div className="px-6 pb-6">
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+          {/* Active filter chip */}
+          {dimFilter && (
+            <div className="px-6 pt-3 pb-1">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-sm text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                {DIM_LABEL[dimFilter.dimension]}: {filterDisplayVal}
+                <button
+                  onClick={() => setDimFilter(null)}
+                  className="ml-0.5 hover:text-blue-900 dark:hover:text-blue-100 transition"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            </div>
+          )}
           {/* Tab headers */}
           <div className="flex border-b border-gray-100 dark:border-gray-700 px-6 gap-1">
             {TABS.map(t => (
@@ -1043,10 +1105,10 @@ export default function SiteDetail() {
                 )}
                 {!tabLoading && !tabError && tabRows.length > 0 && (
                   <>
-                    {tab === 'Queries'   && <DataTable rows={tabRows} isPage={false} />}
-                    {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} />}
-                    {tab === 'Countries' && <CountriesView rows={tabRows} />}
-                    {tab === 'Devices'   && <DevicesView   rows={tabRows} />}
+                    {tab === 'Queries'   && <DataTable rows={tabRows} isPage={false} onRowClick={(v) => handleDimClick('query', v)} activeKey={dimFilter?.dimension === 'query' ? dimFilter.value : null} />}
+                    {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} onRowClick={(v) => handleDimClick('page', v)} activeKey={dimFilter?.dimension === 'page' ? dimFilter.value : null} />}
+                    {tab === 'Countries' && <CountriesView rows={tabRows} onRowClick={(v) => handleDimClick('country', v)} activeKey={dimFilter?.dimension === 'country' ? dimFilter.value : null} />}
+                    {tab === 'Devices'   && <DevicesView   rows={tabRows} onRowClick={(v) => handleDimClick('device', v)} activeKey={dimFilter?.dimension === 'device' ? dimFilter.value : null} />}
                   </>
                 )}
               </>

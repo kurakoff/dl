@@ -155,10 +155,10 @@ router.post('/query-filter', async (req, res) => {
   res.json({ matches });
 });
 
-// GET /api/analytics/site-detail?accountId=&siteUrl=&startDate=&endDate=&dimension=
+// GET /api/analytics/site-detail?accountId=&siteUrl=&startDate=&endDate=&dimension=&filterDim=&filterVal=
 // dimension: query | page | country | device
 router.get('/site-detail', async (req, res) => {
-  const { accountId, siteUrl, startDate, endDate, dimension } = req.query;
+  const { accountId, siteUrl, startDate, endDate, dimension, filterDim, filterVal } = req.query;
   if (!accountId || !siteUrl || !dimension) return res.status(400).json({ error: 'Missing params' });
 
   const db      = getDb();
@@ -180,16 +180,21 @@ router.get('/site-detail', async (req, res) => {
   const LIMITS = { query: 25, page: 25, country: 30, device: 10 };
 
   try {
-    const { data } = await sc.searchanalytics.query({
-      siteUrl,
-      requestBody: {
-        startDate:  startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10),
-        endDate:    endDate   || new Date().toISOString().slice(0, 10),
-        dimensions: [dimension],
-        rowLimit:   LIMITS[dimension] || 25,
-        orderBy:    [{ fieldName: 'clicks', sortOrder: 'DESCENDING' }],
-      },
-    });
+    const requestBody = {
+      startDate:  startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10),
+      endDate:    endDate   || new Date().toISOString().slice(0, 10),
+      dimensions: [dimension],
+      rowLimit:   LIMITS[dimension] || 25,
+      orderBy:    [{ fieldName: 'clicks', sortOrder: 'DESCENDING' }],
+    };
+
+    if (filterDim && filterVal) {
+      requestBody.dimensionFilterGroups = [{
+        filters: [{ dimension: filterDim, operator: 'equals', expression: filterVal }],
+      }];
+    }
+
+    const { data } = await sc.searchanalytics.query({ siteUrl, requestBody });
 
     const rows = (data.rows || []).map(row => ({
       key:         row.keys[0],
@@ -202,6 +207,59 @@ router.get('/site-detail', async (req, res) => {
     res.json({ rows });
   } catch (err) {
     console.error(`site-detail error [${dimension}] ${siteUrl}:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/analytics/site-chart?accountId=&siteUrl=&startDate=&endDate=&filterDim=&filterVal=
+// Returns date-series chart data for a single site, optionally filtered by a dimension
+router.get('/site-chart', async (req, res) => {
+  const { accountId, siteUrl, startDate, endDate, filterDim, filterVal } = req.query;
+  if (!accountId || !siteUrl) return res.status(400).json({ error: 'Missing params' });
+
+  const db      = getDb();
+  const account = db.prepare(
+    'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ?'
+  ).get(accountId, req.userId);
+
+  if (!account) return res.status(403).json({ error: 'Account not found' });
+
+  let client;
+  try {
+    client = await getClientForAccount(account);
+  } catch (err) {
+    return res.status(401).json({ error: 'Token refresh failed' });
+  }
+
+  const sc = google.searchconsole({ version: 'v1', auth: client });
+
+  try {
+    const requestBody = {
+      startDate:  startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10),
+      endDate:    endDate   || new Date().toISOString().slice(0, 10),
+      dimensions: ['date'],
+      rowLimit:   500,
+    };
+
+    if (filterDim && filterVal) {
+      requestBody.dimensionFilterGroups = [{
+        filters: [{ dimension: filterDim, operator: 'equals', expression: filterVal }],
+      }];
+    }
+
+    const { data } = await sc.searchanalytics.query({ siteUrl, requestBody });
+
+    const rows = (data.rows || []).map(row => ({
+      date:        row.keys[0],
+      clicks:      row.clicks,
+      impressions: row.impressions,
+      ctr:         Math.round(row.ctr * 10000) / 100,
+      position:    Math.round(row.position * 10) / 10,
+    }));
+
+    res.json({ data: rows });
+  } catch (err) {
+    console.error(`site-chart error ${siteUrl}:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
