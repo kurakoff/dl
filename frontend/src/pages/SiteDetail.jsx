@@ -294,7 +294,20 @@ function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey }) {
 function CountriesView({ rows, onRowClick, activeKey }) {
   const max = Math.max(...rows.map(r => r.clicks || 0), 1);
   return (
-    <div className="space-y-2.5 overflow-auto" style={{ maxHeight: '520px' }}>
+    <div className="overflow-auto" style={{ maxHeight: '520px' }}>
+      {/* Column headers */}
+      <div className="flex items-center gap-3 pr-1 px-1 pb-2 mb-1 border-b border-gray-100 dark:border-gray-700">
+        <span className="w-5 flex-shrink-0" />
+        <span className="text-xs font-medium text-gray-400 w-36 flex-shrink-0">Country</span>
+        <div className="flex-1" />
+        <div className="flex gap-3 text-xs text-right flex-shrink-0">
+          <span className="font-medium text-gray-400 w-14">Clicks</span>
+          <span className="text-gray-400 w-16 hidden sm:block">Impr.</span>
+          <span className="text-gray-400 w-16 hidden sm:block">CTR</span>
+          <span className="text-gray-400 w-8 hidden sm:block">Pos.</span>
+        </div>
+      </div>
+      <div className="space-y-2.5">
       {rows.map((row, i) => {
         const pct = ((row.clicks || 0) / max) * 100;
         return (
@@ -317,6 +330,7 @@ function CountriesView({ rows, onRowClick, activeKey }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -561,8 +575,9 @@ export default function SiteDetail() {
   const [tabLoading, setTabLoading] = useState(false);
   const [tabError, setTabError]     = useState('');
 
-  // Dimension filter (like GSC: click a row to filter everything)
-  const [dimFilter, setDimFilter] = useState(null); // { dimension: 'country', value: 'deu' }
+  // Dimension filters — multiple simultaneous (like GSC)
+  // { country: 'deu', device: 'MOBILE', query: '...', page: '...' }
+  const [dimFilters, setDimFilters] = useState({});
 
   // Toast
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
@@ -606,13 +621,15 @@ export default function SiteDetail() {
   const daysDiff = Math.round((new Date(endDate) - new Date(startDate)) / 86_400_000);
   const isHourly = daysDiff <= 1;
 
-  // Fetch traffic data — uses site-chart when a dimension filter is active
+  const hasFilters = Object.keys(dimFilters).length > 0;
+
+  // Fetch traffic data — uses site-chart when dimension filters are active
   const fetchTraffic = useCallback(async () => {
     setLoadingChart(true);
     try {
-      if (dimFilter) {
+      if (hasFilters) {
         // Filtered chart via dedicated endpoint
-        const params = { accountId, siteUrl, startDate, endDate, filterDim: dimFilter.dimension, filterVal: dimFilter.value };
+        const params = { accountId, siteUrl, startDate, endDate, filters: JSON.stringify(dimFilters) };
         const res = await api.get('/api/analytics/site-chart', { params });
         setSiteData({ accountId, siteUrl, data: res.data.data || [] });
       } else {
@@ -628,7 +645,7 @@ export default function SiteDetail() {
       }
     } catch { /* ignore */ }
     finally { setLoadingChart(false); }
-  }, [startDate, endDate, accountId, siteUrl, isHourly, dimFilter]);
+  }, [startDate, endDate, accountId, siteUrl, isHourly, hasFilters, dimFilters]);
 
   useEffect(() => { fetchTraffic(); }, [fetchTraffic]);
 
@@ -703,19 +720,21 @@ export default function SiteDetail() {
     setTabLoading(true);
     setTabError('');
     const params = { accountId, siteUrl, startDate, endDate, dimension: DIM[tab] };
-    // Apply dimension filter if active and not for the same dimension
-    if (dimFilter && dimFilter.dimension !== DIM[tab]) {
-      params.filterDim = dimFilter.dimension;
-      params.filterVal = dimFilter.value;
+    // Apply all dimension filters except the one matching this tab's dimension
+    const applicableFilters = Object.fromEntries(
+      Object.entries(dimFilters).filter(([dim]) => dim !== DIM[tab])
+    );
+    if (Object.keys(applicableFilters).length > 0) {
+      params.filters = JSON.stringify(applicableFilters);
     }
     api.get('/api/analytics/site-detail', { params })
       .then(res => setCache(c => ({ ...c, [tab]: res.data.rows || [] })))
       .catch(() => setTabError('Failed to load data.'))
       .finally(() => setTabLoading(false));
-  }, [tab, accountId, siteUrl, startDate, endDate, dimFilter]);
+  }, [tab, accountId, siteUrl, startDate, endDate, dimFilters]);
 
-  // Reset tab cache when dates or filter change
-  useEffect(() => { setCache({}); }, [startDate, endDate, dimFilter]);
+  // Reset tab cache when dates or filters change
+  useEffect(() => { setCache({}); }, [startDate, endDate, dimFilters]);
 
   // Chart data — skip aggregation for hourly, sort by timestamp
   const effectiveGranularity = isHourly ? 'hour' : granularity;
@@ -797,20 +816,33 @@ export default function SiteDetail() {
 
   // Dimension filter helpers
   const DIM_LABEL = { query: 'Query', page: 'Page', country: 'Country', device: 'Device' };
-  const filterDisplayVal = dimFilter
-    ? (dimFilter.dimension === 'country' ? countryName(dimFilter.value)
-      : dimFilter.dimension === 'device' ? (DEV_LABEL[dimFilter.value?.toUpperCase()] || dimFilter.value)
-      : dimFilter.dimension === 'page' ? shortPage(dimFilter.value)
-      : dimFilter.value)
-    : '';
+
+  const displayFilterVal = (dim, val) => {
+    if (dim === 'country') return countryName(val);
+    if (dim === 'device') return DEV_LABEL[val?.toUpperCase()] || val;
+    if (dim === 'page') return shortPage(val);
+    return val;
+  };
 
   const handleDimClick = (dimension, value) => {
-    // Toggle off if same filter clicked again
-    if (dimFilter && dimFilter.dimension === dimension && dimFilter.value === value) {
-      setDimFilter(null);
-    } else {
-      setDimFilter({ dimension, value });
-    }
+    setDimFilters(prev => {
+      const next = { ...prev };
+      // Toggle off if same value clicked again
+      if (next[dimension] === value) {
+        delete next[dimension];
+      } else {
+        next[dimension] = value;
+      }
+      return next;
+    });
+  };
+
+  const removeDimFilter = (dimension) => {
+    setDimFilters(prev => {
+      const next = { ...prev };
+      delete next[dimension];
+      return next;
+    });
   };
 
   return (
@@ -1043,20 +1075,30 @@ export default function SiteDetail() {
       {/* Tabs */}
       <div className="px-6 pb-6">
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-          {/* Active filter chip */}
-          {dimFilter && (
-            <div className="px-6 pt-3 pb-1">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-sm text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                {DIM_LABEL[dimFilter.dimension]}: {filterDisplayVal}
+          {/* Active filter chips */}
+          {hasFilters && (
+            <div className="px-6 pt-3 pb-1 flex flex-wrap gap-2">
+              {Object.entries(dimFilters).map(([dim, val]) => (
+                <span key={dim} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-sm text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                  {DIM_LABEL[dim]}: {displayFilterVal(dim, val)}
+                  <button
+                    onClick={() => removeDimFilter(dim)}
+                    className="ml-0.5 hover:text-blue-900 dark:hover:text-blue-100 transition"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              ))}
+              {Object.keys(dimFilters).length > 1 && (
                 <button
-                  onClick={() => setDimFilter(null)}
-                  className="ml-0.5 hover:text-blue-900 dark:hover:text-blue-100 transition"
+                  onClick={() => setDimFilters({})}
+                  className="px-3 py-1.5 rounded-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  Clear all
                 </button>
-              </span>
+              )}
             </div>
           )}
           {/* Tab headers */}
@@ -1105,10 +1147,10 @@ export default function SiteDetail() {
                 )}
                 {!tabLoading && !tabError && tabRows.length > 0 && (
                   <>
-                    {tab === 'Queries'   && <DataTable rows={tabRows} isPage={false} onRowClick={(v) => handleDimClick('query', v)} activeKey={dimFilter?.dimension === 'query' ? dimFilter.value : null} />}
-                    {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} onRowClick={(v) => handleDimClick('page', v)} activeKey={dimFilter?.dimension === 'page' ? dimFilter.value : null} />}
-                    {tab === 'Countries' && <CountriesView rows={tabRows} onRowClick={(v) => handleDimClick('country', v)} activeKey={dimFilter?.dimension === 'country' ? dimFilter.value : null} />}
-                    {tab === 'Devices'   && <DevicesView   rows={tabRows} onRowClick={(v) => handleDimClick('device', v)} activeKey={dimFilter?.dimension === 'device' ? dimFilter.value : null} />}
+                    {tab === 'Queries'   && <DataTable rows={tabRows} isPage={false} onRowClick={(v) => handleDimClick('query', v)} activeKey={dimFilters.query || null} />}
+                    {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} onRowClick={(v) => handleDimClick('page', v)} activeKey={dimFilters.page || null} />}
+                    {tab === 'Countries' && <CountriesView rows={tabRows} onRowClick={(v) => handleDimClick('country', v)} activeKey={dimFilters.country || null} />}
+                    {tab === 'Devices'   && <DevicesView   rows={tabRows} onRowClick={(v) => handleDimClick('device', v)} activeKey={dimFilters.device || null} />}
                   </>
                 )}
               </>

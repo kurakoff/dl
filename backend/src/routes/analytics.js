@@ -155,10 +155,11 @@ router.post('/query-filter', async (req, res) => {
   res.json({ matches });
 });
 
-// GET /api/analytics/site-detail?accountId=&siteUrl=&startDate=&endDate=&dimension=&filterDim=&filterVal=
+// GET /api/analytics/site-detail?accountId=&siteUrl=&startDate=&endDate=&dimension=&filters=JSON
 // dimension: query | page | country | device
+// filters: JSON object e.g. {"country":"deu","device":"MOBILE"}
 router.get('/site-detail', async (req, res) => {
-  const { accountId, siteUrl, startDate, endDate, dimension, filterDim, filterVal } = req.query;
+  const { accountId, siteUrl, startDate, endDate, dimension } = req.query;
   if (!accountId || !siteUrl || !dimension) return res.status(400).json({ error: 'Missing params' });
 
   const db      = getDb();
@@ -188,9 +189,13 @@ router.get('/site-detail', async (req, res) => {
       orderBy:    [{ fieldName: 'clicks', sortOrder: 'DESCENDING' }],
     };
 
-    if (filterDim && filterVal) {
+    // Parse multi-dimension filters
+    let filters = {};
+    try { if (req.query.filters) filters = JSON.parse(req.query.filters); } catch {}
+    const filterEntries = Object.entries(filters);
+    if (filterEntries.length > 0) {
       requestBody.dimensionFilterGroups = [{
-        filters: [{ dimension: filterDim, operator: 'equals', expression: filterVal }],
+        filters: filterEntries.map(([dim, val]) => ({ dimension: dim, operator: 'equals', expression: val })),
       }];
     }
 
@@ -211,10 +216,10 @@ router.get('/site-detail', async (req, res) => {
   }
 });
 
-// GET /api/analytics/site-chart?accountId=&siteUrl=&startDate=&endDate=&filterDim=&filterVal=
-// Returns date-series chart data for a single site, optionally filtered by a dimension
+// GET /api/analytics/site-chart?accountId=&siteUrl=&startDate=&endDate=&filters=JSON
+// Returns date-series chart data for a single site, optionally filtered by dimensions
 router.get('/site-chart', async (req, res) => {
-  const { accountId, siteUrl, startDate, endDate, filterDim, filterVal } = req.query;
+  const { accountId, siteUrl, startDate, endDate } = req.query;
   if (!accountId || !siteUrl) return res.status(400).json({ error: 'Missing params' });
 
   const db      = getDb();
@@ -241,9 +246,13 @@ router.get('/site-chart', async (req, res) => {
       rowLimit:   500,
     };
 
-    if (filterDim && filterVal) {
+    // Parse multi-dimension filters
+    let filters = {};
+    try { if (req.query.filters) filters = JSON.parse(req.query.filters); } catch {}
+    const filterEntries = Object.entries(filters);
+    if (filterEntries.length > 0) {
       requestBody.dimensionFilterGroups = [{
-        filters: [{ dimension: filterDim, operator: 'equals', expression: filterVal }],
+        filters: filterEntries.map(([dim, val]) => ({ dimension: dim, operator: 'equals', expression: val })),
       }];
     }
 
