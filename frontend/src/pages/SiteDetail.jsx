@@ -621,33 +621,35 @@ export default function SiteDetail() {
   const daysDiff = Math.round((new Date(endDate) - new Date(startDate)) / 86_400_000);
   const isHourly = daysDiff <= 1;
 
+  const filtersKey = JSON.stringify(dimFilters);
   const hasFilters = Object.keys(dimFilters).length > 0;
 
   // Fetch traffic data — uses site-chart when dimension filters are active
-  const fetchTraffic = useCallback(async () => {
+  useEffect(() => {
+    let cancelled = false;
     setLoadingChart(true);
-    try {
-      if (hasFilters) {
-        // Filtered chart via dedicated endpoint
-        const params = { accountId, siteUrl, startDate, endDate, filters: JSON.stringify(dimFilters) };
-        const res = await api.get('/api/analytics/site-chart', { params });
-        setSiteData({ accountId, siteUrl, data: res.data.data || [] });
-      } else {
-        // Unfiltered — use aggregate endpoint
-        const params = { startDate, endDate };
-        if (isHourly) params.hourly = 'true';
-        const res = await api.get('/api/analytics', { params });
-        const results = res.data.results || [];
-        const match = results.find(
-          r => String(r.accountId) === String(accountId) && r.siteUrl === siteUrl
-        );
-        setSiteData(match || null);
-      }
-    } catch { /* ignore */ }
-    finally { setLoadingChart(false); }
-  }, [startDate, endDate, accountId, siteUrl, isHourly, hasFilters, dimFilters]);
-
-  useEffect(() => { fetchTraffic(); }, [fetchTraffic]);
+    (async () => {
+      try {
+        if (hasFilters) {
+          const params = { accountId, siteUrl, startDate, endDate, filters: filtersKey };
+          const res = await api.get('/api/analytics/site-chart', { params });
+          if (!cancelled) setSiteData({ accountId, siteUrl, data: res.data.data || [] });
+        } else {
+          const params = { startDate, endDate };
+          if (isHourly) params.hourly = 'true';
+          const res = await api.get('/api/analytics', { params });
+          if (cancelled) return;
+          const results = res.data.results || [];
+          const match = results.find(
+            r => String(r.accountId) === String(accountId) && r.siteUrl === siteUrl
+          );
+          setSiteData(match || null);
+        }
+      } catch { /* ignore */ }
+      finally { if (!cancelled) setLoadingChart(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [startDate, endDate, accountId, siteUrl, isHourly, filtersKey]);
 
   // Request re-indexing
   const handleRequestIndexing = useCallback(async (url) => {
@@ -713,28 +715,38 @@ export default function SiteDetail() {
     }
   }, [accountId, siteUrl, startDate, endDate, cache]);
 
-  // Fetch tab data (skip for Inspect — it has its own fetch)
+  // Preload ALL tab data (queries, pages, countries, devices) in parallel
   useEffect(() => {
-    if (!DIM[tab]) return;
-    if (cache[tab] !== undefined) return;
+    let cancelled = false;
+    const allDims = Object.entries(DIM); // [['Queries','query'], ['Pages','page'], ...]
     setTabLoading(true);
     setTabError('');
-    const params = { accountId, siteUrl, startDate, endDate, dimension: DIM[tab] };
-    // Apply all dimension filters except the one matching this tab's dimension
-    const applicableFilters = Object.fromEntries(
-      Object.entries(dimFilters).filter(([dim]) => dim !== DIM[tab])
-    );
-    if (Object.keys(applicableFilters).length > 0) {
-      params.filters = JSON.stringify(applicableFilters);
-    }
-    api.get('/api/analytics/site-detail', { params })
-      .then(res => setCache(c => ({ ...c, [tab]: res.data.rows || [] })))
-      .catch(() => setTabError('Failed to load data.'))
-      .finally(() => setTabLoading(false));
-  }, [tab, accountId, siteUrl, startDate, endDate, dimFilters]);
+    setCache({});
 
-  // Reset tab cache when dates or filters change
-  useEffect(() => { setCache({}); }, [startDate, endDate, dimFilters]);
+    Promise.all(allDims.map(async ([tabName, dim]) => {
+      const params = { accountId, siteUrl, startDate, endDate, dimension: dim };
+      const applicable = Object.fromEntries(
+        Object.entries(dimFilters).filter(([d]) => d !== dim)
+      );
+      if (Object.keys(applicable).length > 0) {
+        params.filters = JSON.stringify(applicable);
+      }
+      try {
+        const res = await api.get('/api/analytics/site-detail', { params });
+        return [tabName, res.data.rows || []];
+      } catch {
+        return [tabName, []];
+      }
+    })).then(results => {
+      if (cancelled) return;
+      const next = {};
+      for (const [t, rows] of results) next[t] = rows;
+      setCache(next);
+    }).catch(() => { if (!cancelled) setTabError('Failed to load data.'); })
+      .finally(() => { if (!cancelled) setTabLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [accountId, siteUrl, startDate, endDate, filtersKey]);
 
   // Chart data — skip aggregation for hourly, sort by timestamp
   const effectiveGranularity = isHourly ? 'hour' : granularity;
