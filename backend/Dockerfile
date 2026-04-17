@@ -8,9 +8,10 @@ COPY package.json ./
 RUN npm install --omit=dev && rm -rf /root/.npm
 
 COPY src/ ./src/
+COPY entrypoint.sh ./
 
 RUN mkdir -p /app/data
 
 EXPOSE 3001
 
-CMD ["node", "src/index.js"]
+CMD ["sh", "entrypoint.sh"]
