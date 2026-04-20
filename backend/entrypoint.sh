@@ -6,6 +6,7 @@ if [ -n "$INIT_DB_URL" ]; then
   echo "Downloading DB from $INIT_DB_URL ..."
   apk add --no-cache curl >/dev/null 2>&1
   curl -fL --connect-timeout 10 --max-time 120 -o /app/data/app.db "$INIT_DB_URL"
+  rm -f /app/data/app.db-wal /app/data/app.db-shm
   echo "DB download done: $(stat -c%s /app/data/app.db 2>/dev/null || echo '?') bytes"
 fi
 
