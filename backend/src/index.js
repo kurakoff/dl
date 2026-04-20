@@ -43,7 +43,18 @@ app.use('/api/indexing',   require('./routes/indexing'));
 app.use('/api/notes',      require('./routes/notes'));
 app.use('/api/safety',     require('./routes/safety'));
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
+app.get('/health', (_req, res) => {
+  try {
+    const { getDb } = require('./config/database');
+    const db = getDb();
+    const users = db.prepare('SELECT count(*) as c FROM users').get().c;
+    const accounts = db.prepare('SELECT count(*) as c FROM connected_accounts').get().c;
+    const sites = db.prepare('SELECT count(*) as c FROM selected_sites').get().c;
+    res.json({ status: 'ok', ts: Date.now(), db: { users, accounts, sites } });
+  } catch (e) {
+    res.json({ status: 'ok', ts: Date.now(), dbError: e.message });
+  }
+});
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
