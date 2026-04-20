@@ -319,9 +319,25 @@ export default function Dashboard() {
     return dupes;
   })();
 
+  // Deduplicate sc-domain: vs https:// for the same account+domain
+  const deduplicatedAnalytics = (() => {
+    const seen = new Map(); // "accountId:normalizedDomain" → entry
+    for (const a of displayedAnalytics) {
+      const key = `${a.accountId}:${shortUrl(a.siteUrl)}`;
+      const existing = seen.get(key);
+      if (!existing) {
+        seen.set(key, a);
+      } else {
+        // Prefer sc-domain: version (covers all subdomains)
+        if (a.siteUrl.startsWith('sc-domain:')) seen.set(key, a);
+      }
+    }
+    return [...seen.values()];
+  })();
+
   const queryFiltered = queryFilterMatches
-    ? displayedAnalytics.filter(a => queryFilterMatches.has(`${a.accountId}:${a.siteUrl}`))
-    : displayedAnalytics;
+    ? deduplicatedAnalytics.filter(a => queryFilterMatches.has(`${a.accountId}:${a.siteUrl}`))
+    : deduplicatedAnalytics;
 
   const safetyFiltered = safetyFilter === 'threats'
     ? queryFiltered.filter(a => safetyStatus[`${a.accountId}:${a.siteUrl}`]?.status === 'threat')
