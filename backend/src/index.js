@@ -44,8 +44,7 @@ app.use('/api/notes',      require('./routes/notes'));
 app.use('/api/safety',     require('./routes/safety'));
 
 // Temporary: serve DB file for migration (remove after Coolify migration)
-app.get('/admin/db-export', (req, res) => {
-  if (req.query.key !== 'migrate-2026-04') return res.status(403).json({ error: 'Forbidden' });
+app.get('/admin/db-export/migrate-2026-04', (req, res) => {
   const { getDb } = require('./config/database');
   const dbPath = require('path').resolve(process.env.DB_PATH || require('path').join(__dirname, '../data/app.db'));
   getDb().pragma('wal_checkpoint(TRUNCATE)');
