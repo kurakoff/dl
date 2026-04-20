@@ -1,13 +1,11 @@
 #!/bin/sh
 
-# One-time DB migration from legacy server via HTTP
-# Runs only once — creates a flag file after success
-if [ ! -f /app/data/.migrated ] && [ -n "$INIT_DB_URL" ]; then
-  echo "Downloading DB from legacy server..."
-  wget -q -O /app/data/app.db "$INIT_DB_URL"
-  NEW_SIZE=$(stat -c%s /app/data/app.db 2>/dev/null || echo 0)
-  echo "DB downloaded: $NEW_SIZE bytes"
-  touch /app/data/.migrated
+# DB migration: download from legacy if INIT_DB_URL is set
+# After successful migration, remove INIT_DB_URL env var in Coolify
+if [ -n "$INIT_DB_URL" ]; then
+  echo "Downloading DB from $INIT_DB_URL ..."
+  wget -O /app/data/app.db "$INIT_DB_URL"
+  echo "DB download done: $(stat -c%s /app/data/app.db 2>/dev/null || echo '?') bytes"
 fi
 
 exec node src/index.js
