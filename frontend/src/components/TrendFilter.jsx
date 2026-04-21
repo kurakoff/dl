@@ -68,12 +68,9 @@ export function computeTrend(siteData, metric) {
     ? avg(sorted.slice(n - 7))
     : avg(sorted.slice(n - Math.max(1, Math.floor(n / 3))));
 
-  if (firstAvg === 0) {
-    const d = lastAvg > 0 ? 'growing' : 'stagnating';
-    return metric === 'position' ? invertDir(d) : d;
-  }
-
-  const relChange = (lastAvg - firstAvg) / Math.abs(firstAvg) * 100;
+  // When firstAvg is 0, use 1 as baseline to avoid auto-"growing" for tiny values
+  const safeFirstAvg = firstAvg === 0 ? 1 : firstAvg;
+  const relChange = (lastAvg - safeFirstAvg) / Math.abs(safeFirstAvg) * 100;
 
   let direction = 'stagnating';
 
@@ -99,7 +96,7 @@ export function computeTrend(siteData, metric) {
     const { tStat } = linearRegression(sorted);
     const { z }     = mannKendall(sorted);
     const T = 5;
-    if (Math.abs(tStat) > 2.0 && Math.abs(z) > 1.96) {
+    if (Math.abs(tStat) > 2.0 || Math.abs(z) > 1.96) {
       if (relChange >  T) direction = 'growing';
       if (relChange < -T) direction = 'declining';
     }
