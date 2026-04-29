@@ -547,47 +547,56 @@ function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast, onCanonic
                 <div>
                   <span className="text-gray-400">Indexing</span>
                   <p className="text-gray-700 dark:text-gray-200 font-medium">{result.indexingState.replace(/_/g, ' ').toLowerCase()}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Whether Google is allowed to index this page</p>
                 </div>
               )}
               {result.crawledAs && (
                 <div>
                   <span className="text-gray-400">Crawled as</span>
                   <p className="text-gray-700 dark:text-gray-200 font-medium">{result.crawledAs}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">The user agent Google used to crawl</p>
                 </div>
               )}
               {result.pageFetchState && (
                 <div>
                   <span className="text-gray-400">Page fetch</span>
                   <p className="text-gray-700 dark:text-gray-200 font-medium">{result.pageFetchState.replace(/_/g, ' ').toLowerCase()}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Whether Google could successfully fetch the page</p>
                 </div>
               )}
               {result.robotsTxtState && (
                 <div>
                   <span className="text-gray-400">Robots.txt</span>
                   <p className="text-gray-700 dark:text-gray-200 font-medium">{result.robotsTxtState.replace(/_/g, ' ').toLowerCase()}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Whether robots.txt allows or blocks crawling</p>
                 </div>
               )}
               {result.lastCrawlTime && (
                 <div>
                   <span className="text-gray-400">Last crawl</span>
                   <p className="text-gray-700 dark:text-gray-200 font-medium">{new Date(result.lastCrawlTime).toLocaleString()}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">When Google last visited this page</p>
                 </div>
               )}
               {result.userCanonical && (
                 <div className="col-span-2">
                   <span className="text-gray-400">User canonical</span>
                   <p className="text-gray-700 dark:text-gray-200 font-medium truncate" title={result.userCanonical}>{result.userCanonical}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">The canonical URL you specified in your page's HTML via &lt;link rel="canonical"&gt;</p>
                 </div>
               )}
               {result.googleCanonical && (
                 <div className="col-span-2">
                   <span className="text-gray-400">Google canonical</span>
                   {result.googleCanonical === result.userCanonical ? (
-                    <p className="text-green-600 dark:text-green-400 font-medium">Matches user canonical</p>
+                    <>
+                      <p className="text-green-600 dark:text-green-400 font-medium">Matches user canonical</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Google agrees with your canonical — this page will appear in search results</p>
+                    </>
                   ) : (
                     <>
                       <p className="text-orange-500 font-medium truncate" title={result.googleCanonical}>{result.googleCanonical}</p>
-                      <p className="text-xs text-orange-400 mt-1">Google chose a different canonical. This page may not appear in search results — Google treats it as a duplicate of the URL above.</p>
+                      <p className="text-[10px] text-orange-400 mt-0.5">Google chose a different canonical — this page may not appear in search, Google treats it as a duplicate</p>
                     </>
                   )}
                 </div>
