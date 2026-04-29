@@ -1005,7 +1005,7 @@ export default function SiteDetail() {
             Re-index All Pages
           </button>
         )}
-        {isSiteOwner && tab === 'Pages' && (
+        {tab === 'Pages' && (
           <button
             onClick={handleCheckCanonicals}
             disabled={!!canonicalsProgress}
