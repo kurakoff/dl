@@ -257,8 +257,8 @@ function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey, can
             <Th id="impressions" label="Impressions"  right />
             <Th id="ctr"         label="CTR"          right />
             <Th id="position"    label="Position"     right />
-            {hasCanonicals && <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 text-left">User Canonical</th>}
-            {hasCanonicals && <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 text-left">Google Canonical</th>}
+            {hasCanonicals && <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 text-left" title="The canonical URL specified in your page's HTML">User Canonical</th>}
+            {hasCanonicals && <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 text-left" title="The canonical URL that Google selected. Mismatch means Google may treat this page as a duplicate.">Google Canonical</th>}
             {isPage && onRequestIndexing && <th className="px-2 py-2.5 w-8" />}
           </tr>
         </thead>
@@ -290,8 +290,8 @@ function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey, can
                       <div className="flex items-center gap-1">
                         {c ? (
                           c.googleCanonical && c.googleCanonical === c.userCanonical
-                            ? <span className="text-green-500 text-xs font-medium">&#10003; Match</span>
-                            : <span className="block truncate text-xs text-orange-500 font-medium" title={c.googleCanonical}>{c.googleCanonical || '—'}</span>
+                            ? <span className="text-green-500 text-xs font-medium" title="Google's canonical matches your canonical — this page will appear in search results">&#10003; Match</span>
+                            : <span className="block truncate text-xs text-orange-500 font-medium" title={`${c.googleCanonical || '—'}\n\nMismatch: Google chose a different canonical. This page may not appear in search — Google treats it as a duplicate.`}>{c.googleCanonical || '—'}</span>
                         ) : ''}
                         {onRecheckCanonical && (
                           <button onClick={() => onRecheckCanonical(row.key)} title="Re-check canonical" className="flex-shrink-0 text-gray-300 hover:text-blue-500 transition">
@@ -585,7 +585,10 @@ function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast, onCanonic
                   {result.googleCanonical === result.userCanonical ? (
                     <p className="text-green-600 dark:text-green-400 font-medium">Matches user canonical</p>
                   ) : (
-                    <p className="text-orange-500 font-medium truncate" title={result.googleCanonical}>{result.googleCanonical}</p>
+                    <>
+                      <p className="text-orange-500 font-medium truncate" title={result.googleCanonical}>{result.googleCanonical}</p>
+                      <p className="text-xs text-orange-400 mt-1">Google chose a different canonical. This page may not appear in search results — Google treats it as a duplicate of the URL above.</p>
+                    </>
                   )}
                 </div>
               )}
@@ -1056,27 +1059,29 @@ export default function SiteDetail() {
           </button>
         )}
         {tab === 'Pages' && (
-          <button
-            onClick={handleCheckCanonicals}
-            disabled={!!canonicalsProgress}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition disabled:opacity-50"
-          >
-            {canonicalsProgress ? (
-              <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-              </svg>
-            ) : (
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+          <div className="flex flex-col items-center">
+            <button
+              onClick={handleCheckCanonicals}
+              disabled={!!canonicalsProgress}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition disabled:opacity-50"
+            >
+              {canonicalsProgress ? (
+                <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                </svg>
+              ) : (
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+              {canonicalsProgress ? `Checking ${canonicalsProgress}...` : 'Check Canonicals'}
+            </button>
+            {canonicalsCheckedAt && !canonicalsProgress && (
+              <span className="text-[10px] text-gray-400 mt-1">Checked {timeAgo(canonicalsCheckedAt)}</span>
             )}
-            {canonicalsProgress ? `Checking ${canonicalsProgress}...` : 'Check Canonicals'}
-          </button>
-        )}
-        {tab === 'Pages' && canonicalsCheckedAt && !canonicalsProgress && (
-          <span className="text-xs text-gray-400">Checked {timeAgo(canonicalsCheckedAt)}</span>
+          </div>
         )}
         {!isHourly && (
         <div className="flex items-center bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm overflow-hidden">
