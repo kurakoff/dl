@@ -142,4 +142,55 @@ router.post('/inspect', async (req, res) => {
   }
 });
 
+// GET /api/indexing/canonicals?accountId=...&siteUrl=...
+router.get('/canonicals', (req, res) => {
+  const { accountId, siteUrl } = req.query;
+  if (!accountId || !siteUrl) {
+    return res.status(400).json({ error: 'accountId and siteUrl are required' });
+  }
+
+  const db = getDb();
+  // Verify account belongs to user
+  const account = db.prepare(
+    'SELECT id FROM connected_accounts WHERE id = ? AND user_id = ?'
+  ).get(accountId, req.userId);
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+
+  const rows = db.prepare(
+    'SELECT page_url, user_canonical, google_canonical, checked_at FROM canonicals_cache WHERE connected_account_id = ? AND site_url = ?'
+  ).all(accountId, siteUrl);
+
+  const data = {};
+  let checkedAt = null;
+  for (const row of rows) {
+    data[row.page_url] = { userCanonical: row.user_canonical, googleCanonical: row.google_canonical };
+    if (!checkedAt || row.checked_at > checkedAt) checkedAt = row.checked_at;
+  }
+
+  res.json({ canonicals: data, checkedAt });
+});
+
+// POST /api/indexing/canonicals — save single canonical result
+router.post('/canonicals', (req, res) => {
+  const { accountId, siteUrl, pageUrl, userCanonical, googleCanonical } = req.body;
+  if (!accountId || !siteUrl || !pageUrl) {
+    return res.status(400).json({ error: 'accountId, siteUrl, and pageUrl are required' });
+  }
+
+  const db = getDb();
+  const account = db.prepare(
+    'SELECT id FROM connected_accounts WHERE id = ? AND user_id = ?'
+  ).get(accountId, req.userId);
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+
+  db.prepare(`
+    INSERT INTO canonicals_cache (connected_account_id, site_url, page_url, user_canonical, google_canonical, checked_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(connected_account_id, site_url, page_url)
+    DO UPDATE SET user_canonical = excluded.user_canonical, google_canonical = excluded.google_canonical, checked_at = datetime('now')
+  `).run(accountId, siteUrl, pageUrl, userCanonical || null, googleCanonical || null);
+
+  res.json({ success: true });
+});
+
 module.exports = router;

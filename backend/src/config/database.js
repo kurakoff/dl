@@ -166,6 +166,21 @@ function initDb() {
     )
   `);
 
+  // Canonicals cache table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS canonicals_cache (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      connected_account_id INTEGER NOT NULL,
+      site_url        TEXT NOT NULL,
+      page_url        TEXT NOT NULL,
+      user_canonical  TEXT,
+      google_canonical TEXT,
+      checked_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (connected_account_id) REFERENCES connected_accounts(id) ON DELETE CASCADE,
+      UNIQUE(connected_account_id, site_url, page_url)
+    )
+  `);
+
   console.log('Database initialized at', DB_PATH);
 }
 

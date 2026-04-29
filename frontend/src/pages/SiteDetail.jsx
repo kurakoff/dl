@@ -623,7 +623,20 @@ export default function SiteDetail() {
 
   // Batch canonicals check
   const [canonicals, setCanonicals] = useState({});
+  const [canonicalsCheckedAt, setCanonicalsCheckedAt] = useState(null);
   const [canonicalsProgress, setCanonicalsProgress] = useState(null);
+
+  // Load saved canonicals from DB on mount
+  useEffect(() => {
+    api.get('/api/indexing/canonicals', { params: { accountId, siteUrl } })
+      .then(res => {
+        if (res.data.canonicals && Object.keys(res.data.canonicals).length > 0) {
+          setCanonicals(res.data.canonicals);
+          setCanonicalsCheckedAt(res.data.checkedAt);
+        }
+      })
+      .catch(() => {});
+  }, [accountId, siteUrl]);
 
   // Site ownership check
   const [isSiteOwner, setIsSiteOwner] = useState(false);
@@ -779,6 +792,10 @@ export default function SiteDetail() {
         });
         const { userCanonical, googleCanonical } = res.data;
         setCanonicals(prev => ({ ...prev, [urls[i]]: { userCanonical, googleCanonical } }));
+        // Save to DB
+        api.post('/api/indexing/canonicals', {
+          accountId, siteUrl, pageUrl: urls[i], userCanonical, googleCanonical,
+        }).catch(() => {});
       } catch {
         // skip failed URL
       }
@@ -788,6 +805,7 @@ export default function SiteDetail() {
     }
 
     setCanonicalsProgress(null);
+    setCanonicalsCheckedAt(new Date().toISOString());
   }, [accountId, siteUrl, startDate, endDate, cache]);
 
   // Preload ALL tab data (queries, pages, countries, devices) in parallel
@@ -1024,6 +1042,9 @@ export default function SiteDetail() {
             )}
             {canonicalsProgress ? `Checking ${canonicalsProgress}...` : 'Check Canonicals'}
           </button>
+        )}
+        {tab === 'Pages' && canonicalsCheckedAt && !canonicalsProgress && (
+          <span className="text-xs text-gray-400">Checked {timeAgo(canonicalsCheckedAt)}</span>
         )}
         {!isHourly && (
         <div className="flex items-center bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm overflow-hidden">
