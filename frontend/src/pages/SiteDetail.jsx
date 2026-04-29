@@ -415,7 +415,7 @@ const VERDICT_STYLE = {
   VERDICT_UNSPECIFIED: { label: 'Unknown status', bg: 'bg-gray-50 dark:bg-gray-700', border: 'border-gray-200 dark:border-gray-600', text: 'text-gray-600 dark:text-gray-300', icon: '?' },
 };
 
-function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast }) {
+function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast, onCanonicalFound }) {
   const [url, setUrl] = useState('');
   const [inspecting, setInspecting] = useState(false);
   const [result, setResult] = useState(null);
@@ -436,6 +436,9 @@ function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast }) {
         inspectionUrl: url.trim(),
       });
       setResult(res.data);
+      if (res.data.userCanonical || res.data.googleCanonical) {
+        onCanonicalFound?.(url.trim(), res.data.userCanonical, res.data.googleCanonical);
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Inspection failed');
     } finally {
@@ -1286,6 +1289,10 @@ export default function SiteDetail() {
                 siteUrl={siteUrl}
                 isSiteOwner={isSiteOwner}
                 onToast={(t) => { setToast(t); setTimeout(() => setToast(null), 3000); }}
+                onCanonicalFound={(pageUrl, userCanonical, googleCanonical) => {
+                  setCanonicals(prev => ({ ...prev, [pageUrl]: { userCanonical, googleCanonical } }));
+                  api.post('/api/indexing/canonicals', { accountId, siteUrl, pageUrl, userCanonical, googleCanonical }).catch(() => {});
+                }}
               />
             ) : (
               <>
