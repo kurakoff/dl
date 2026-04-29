@@ -132,6 +132,8 @@ router.post('/inspect', async (req, res) => {
       crawledAs: index.crawledAs,
       referringUrls: index.referringUrls,
       sitemap: index.sitemap,
+      userCanonical: index.userCanonical,
+      googleCanonical: index.googleCanonical,
     });
   } catch (err) {
     const detail = err.response?.data?.error?.message || err.message;

@@ -540,6 +540,22 @@ function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast }) {
                   <p className="text-gray-700 dark:text-gray-200 font-medium">{new Date(result.lastCrawlTime).toLocaleString()}</p>
                 </div>
               )}
+              {result.userCanonical && (
+                <div className="col-span-2">
+                  <span className="text-gray-400">User canonical</span>
+                  <p className="text-gray-700 dark:text-gray-200 font-medium truncate" title={result.userCanonical}>{result.userCanonical}</p>
+                </div>
+              )}
+              {result.googleCanonical && (
+                <div className="col-span-2">
+                  <span className="text-gray-400">Google canonical</span>
+                  {result.googleCanonical === result.userCanonical ? (
+                    <p className="text-green-600 dark:text-green-400 font-medium">Matches user canonical</p>
+                  ) : (
+                    <p className="text-orange-500 font-medium truncate" title={result.googleCanonical}>{result.googleCanonical}</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
