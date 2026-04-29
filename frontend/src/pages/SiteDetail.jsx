@@ -227,7 +227,7 @@ function IndexButton({ url, onRequest }) {
 
 // ── DataTable (Queries / Pages) ──────────────────────────────────────────────
 
-function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey, canonicals }) {
+function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey, canonicals, onRecheckCanonical }) {
   const hasCanonicals = isPage && canonicals && Object.keys(canonicals).length > 0;
   const [col, setCol] = useState('clicks');
   const [asc, setAsc] = useState(false);
@@ -286,12 +286,22 @@ function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey, can
                     <td className="px-3 py-2 text-gray-500 dark:text-gray-400 max-w-[200px]">
                       {c ? <span className="block truncate text-xs" title={c.userCanonical}>{c.userCanonical || '—'}</span> : ''}
                     </td>
-                    <td className="px-3 py-2 max-w-[200px]">
-                      {c ? (
-                        c.googleCanonical && c.googleCanonical === c.userCanonical
-                          ? <span className="text-green-500 text-xs font-medium">&#10003; Match</span>
-                          : <span className="block truncate text-xs text-orange-500 font-medium" title={c.googleCanonical}>{c.googleCanonical || '—'}</span>
-                      ) : ''}
+                    <td className="px-3 py-2 max-w-[200px]" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        {c ? (
+                          c.googleCanonical && c.googleCanonical === c.userCanonical
+                            ? <span className="text-green-500 text-xs font-medium">&#10003; Match</span>
+                            : <span className="block truncate text-xs text-orange-500 font-medium" title={c.googleCanonical}>{c.googleCanonical || '—'}</span>
+                        ) : ''}
+                        {onRecheckCanonical && (
+                          <button onClick={() => onRecheckCanonical(row.key)} title="Re-check canonical" className="flex-shrink-0 text-gray-300 hover:text-blue-500 transition">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </>
                 );
@@ -808,6 +818,25 @@ export default function SiteDetail() {
     setCanonicalsCheckedAt(new Date().toISOString());
   }, [accountId, siteUrl, startDate, endDate, cache]);
 
+  // Re-check single URL canonical
+  const handleRecheckCanonical = useCallback(async (pageUrl) => {
+    try {
+      const res = await api.post('/api/indexing/inspect', {
+        accountId, siteUrl, inspectionUrl: pageUrl,
+      });
+      const { userCanonical, googleCanonical } = res.data;
+      setCanonicals(prev => ({ ...prev, [pageUrl]: { userCanonical, googleCanonical } }));
+      api.post('/api/indexing/canonicals', {
+        accountId, siteUrl, pageUrl, userCanonical, googleCanonical,
+      }).catch(() => {});
+      setToast({ message: 'Canonical updated', type: 'success' });
+      setTimeout(() => setToast(null), 2000);
+    } catch {
+      setToast({ message: 'Inspection failed', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  }, [accountId, siteUrl]);
+
   // Preload ALL tab data (queries, pages, countries, devices) in parallel
   useEffect(() => {
     let cancelled = false;
@@ -1276,7 +1305,7 @@ export default function SiteDetail() {
                 {!tabLoading && !tabError && tabRows.length > 0 && (
                   <>
                     {tab === 'Queries'   && <DataTable rows={tabRows} isPage={false} onRowClick={(v) => handleDimClick('query', v)} activeKey={dimFilters.query || null} />}
-                    {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} onRowClick={(v) => handleDimClick('page', v)} activeKey={dimFilters.page || null} canonicals={canonicals} />}
+                    {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} onRowClick={(v) => handleDimClick('page', v)} activeKey={dimFilters.page || null} canonicals={canonicals} onRecheckCanonical={handleRecheckCanonical} />}
                     {tab === 'Countries' && <CountriesView rows={tabRows} onRowClick={(v) => handleDimClick('country', v)} activeKey={dimFilters.country || null} />}
                     {tab === 'Devices'   && <DevicesView   rows={tabRows} onRowClick={(v) => handleDimClick('device', v)} activeKey={dimFilters.device || null} />}
                   </>
