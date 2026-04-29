@@ -227,7 +227,8 @@ function IndexButton({ url, onRequest }) {
 
 // ── DataTable (Queries / Pages) ──────────────────────────────────────────────
 
-function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey }) {
+function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey, canonicals }) {
+  const hasCanonicals = isPage && canonicals && Object.keys(canonicals).length > 0;
   const [col, setCol] = useState('clicks');
   const [asc, setAsc] = useState(false);
 
@@ -256,6 +257,8 @@ function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey }) {
             <Th id="impressions" label="Impressions"  right />
             <Th id="ctr"         label="CTR"          right />
             <Th id="position"    label="Position"     right />
+            {hasCanonicals && <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 text-left">User Canonical</th>}
+            {hasCanonicals && <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 text-left">Google Canonical</th>}
             {isPage && onRequestIndexing && <th className="px-2 py-2.5 w-8" />}
           </tr>
         </thead>
@@ -276,6 +279,23 @@ function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey }) {
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtNum(row.impressions)}</td>
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtCtr(row.ctr)}</td>
               <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{fmtPos(row.position)}</td>
+              {hasCanonicals && (() => {
+                const c = canonicals[row.key];
+                return (
+                  <>
+                    <td className="px-3 py-2 text-gray-500 dark:text-gray-400 max-w-[200px]">
+                      {c ? <span className="block truncate text-xs" title={c.userCanonical}>{c.userCanonical || '—'}</span> : ''}
+                    </td>
+                    <td className="px-3 py-2 max-w-[200px]">
+                      {c ? (
+                        c.googleCanonical && c.googleCanonical === c.userCanonical
+                          ? <span className="text-green-500 text-xs font-medium">&#10003; Match</span>
+                          : <span className="block truncate text-xs text-orange-500 font-medium" title={c.googleCanonical}>{c.googleCanonical || '—'}</span>
+                      ) : ''}
+                    </td>
+                  </>
+                );
+              })()}
               {isPage && onRequestIndexing && (
                 <td className="px-2 py-2 text-center" onClick={e => e.stopPropagation()}>
                   <IndexButton url={row.key} onRequest={onRequestIndexing} />
@@ -601,6 +621,10 @@ export default function SiteDetail() {
   // Batch re-index
   const [batchIndexing, setBatchIndexing] = useState(false);
 
+  // Batch canonicals check
+  const [canonicals, setCanonicals] = useState({});
+  const [canonicalsProgress, setCanonicalsProgress] = useState(null);
+
   // Site ownership check
   const [isSiteOwner, setIsSiteOwner] = useState(false);
   const [permissionLevel, setPermissionLevel] = useState(null);
@@ -718,6 +742,52 @@ export default function SiteDetail() {
       setBatchIndexing(false);
       setTimeout(() => setToast(null), 4000);
     }
+  }, [accountId, siteUrl, startDate, endDate, cache]);
+
+  // Batch check canonicals for all pages
+  const handleCheckCanonicals = useCallback(async () => {
+    let pages = cache['Pages'];
+    if (!pages) {
+      try {
+        const res = await api.get('/api/analytics/site-detail', {
+          params: { accountId, siteUrl, startDate, endDate, dimension: 'page' },
+        });
+        pages = res.data.rows || [];
+        setCache(c => ({ ...c, Pages: pages }));
+      } catch {
+        setToast({ message: 'Failed to load pages', type: 'error' });
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+    }
+    if (pages.length === 0) {
+      setToast({ message: 'No pages found', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    const urls = pages.map(r => r.key);
+    setCanonicalsProgress(`0/${urls.length}`);
+
+    for (let i = 0; i < urls.length; i++) {
+      setCanonicalsProgress(`${i + 1}/${urls.length}`);
+      try {
+        const res = await api.post('/api/indexing/inspect', {
+          accountId,
+          siteUrl,
+          inspectionUrl: urls[i],
+        });
+        const { userCanonical, googleCanonical } = res.data;
+        setCanonicals(prev => ({ ...prev, [urls[i]]: { userCanonical, googleCanonical } }));
+      } catch {
+        // skip failed URL
+      }
+      if (i < urls.length - 1) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+
+    setCanonicalsProgress(null);
   }, [accountId, siteUrl, startDate, endDate, cache]);
 
   // Preload ALL tab data (queries, pages, countries, devices) in parallel
@@ -933,6 +1003,26 @@ export default function SiteDetail() {
               </svg>
             )}
             Re-index All Pages
+          </button>
+        )}
+        {isSiteOwner && tab === 'Pages' && (
+          <button
+            onClick={handleCheckCanonicals}
+            disabled={!!canonicalsProgress}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition disabled:opacity-50"
+          >
+            {canonicalsProgress ? (
+              <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            {canonicalsProgress ? `Checking ${canonicalsProgress}...` : 'Check Canonicals'}
           </button>
         )}
         {!isHourly && (
@@ -1165,7 +1255,7 @@ export default function SiteDetail() {
                 {!tabLoading && !tabError && tabRows.length > 0 && (
                   <>
                     {tab === 'Queries'   && <DataTable rows={tabRows} isPage={false} onRowClick={(v) => handleDimClick('query', v)} activeKey={dimFilters.query || null} />}
-                    {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} onRowClick={(v) => handleDimClick('page', v)} activeKey={dimFilters.page || null} />}
+                    {tab === 'Pages'     && <DataTable rows={tabRows} isPage={true} onRequestIndexing={isSiteOwner ? handleRequestIndexing : null} onRowClick={(v) => handleDimClick('page', v)} activeKey={dimFilters.page || null} canonicals={canonicals} />}
                     {tab === 'Countries' && <CountriesView rows={tabRows} onRowClick={(v) => handleDimClick('country', v)} activeKey={dimFilters.country || null} />}
                     {tab === 'Devices'   && <DevicesView   rows={tabRows} onRowClick={(v) => handleDimClick('device', v)} activeKey={dimFilters.device || null} />}
                   </>
