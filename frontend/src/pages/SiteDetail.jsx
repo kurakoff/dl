@@ -290,8 +290,14 @@ function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey, can
                       <div className="flex items-center gap-1">
                         {c ? (
                           c.googleCanonical && c.googleCanonical === c.userCanonical
-                            ? <span className="text-green-500 text-xs font-medium" title="Google's canonical matches your canonical — this page will appear in search results">&#10003; Match</span>
-                            : <span className="block truncate text-xs text-orange-500 font-medium" title={`${c.googleCanonical || '—'}\n\nMismatch: Google chose a different canonical. This page may not appear in search — Google treats it as a duplicate.`}>{c.googleCanonical || '—'}</span>
+                            ? <span className="flex items-center gap-1 text-xs" title="Google agrees with your canonical — this page will appear in search results">
+                                <span className="text-green-500 font-medium">&#10003;</span>
+                                <span className="truncate text-green-600 dark:text-green-400" title={c.googleCanonical}>{c.googleCanonical}</span>
+                              </span>
+                            : <span className="flex items-center gap-1 text-xs" title="Mismatch: Google chose a different canonical. This page may not appear in search — Google treats it as a duplicate.">
+                                <span className="text-orange-500 font-medium">&#10007;</span>
+                                <span className="truncate text-orange-500 font-medium" title={c.googleCanonical}>{c.googleCanonical || '—'}</span>
+                              </span>
                         ) : ''}
                         {onRecheckCanonical && (
                           <button onClick={() => onRecheckCanonical(row.key)} title="Re-check canonical" className="flex-shrink-0 text-gray-300 hover:text-blue-500 transition">
