@@ -137,6 +137,17 @@ function initDb() {
     console.error('Migration (has_indexing_scope) error:', err.message);
   }
 
+  // Migration: add has_siteverification_scope column to connected_accounts
+  try {
+    const cols3 = database.prepare('PRAGMA table_info(connected_accounts)').all();
+    if (!cols3.find(c => c.name === 'has_siteverification_scope')) {
+      database.exec('ALTER TABLE connected_accounts ADD COLUMN has_siteverification_scope INTEGER DEFAULT 0');
+      console.log('Migration: added has_siteverification_scope column to connected_accounts');
+    }
+  } catch (err) {
+    console.error('Migration (has_siteverification_scope) error:', err.message);
+  }
+
   // Create site_notes table
   database.exec(`
     CREATE TABLE IF NOT EXISTS site_notes (

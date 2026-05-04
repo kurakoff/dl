@@ -12,6 +12,7 @@ import AccountsModal from '../components/AccountsModal';
 import SitePickerModal from '../components/SitePickerModal';
 import SafetyBanner from '../components/SafetyBanner';
 import SafetyAlertModal from '../components/SafetyAlertModal';
+import AddSiteModal from '../components/AddSiteModal';
 
 function daysAgo(n) {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
@@ -96,6 +97,7 @@ export default function Dashboard() {
   const [showSettings,   setShowSettings]   = useState(false);
   const [showAccounts,   setShowAccounts]   = useState(false);
   const [showSitePicker, setShowSitePicker] = useState(false);
+  const [showAddSite,    setShowAddSite]    = useState(false);
   const [globalMetrics,  setGlobalMetrics]  = useState(['clicks']);
   const [darkMode,       setDarkMode]       = useState(() => localStorage.getItem('theme') === 'dark');
 
@@ -736,6 +738,7 @@ export default function Dashboard() {
             accountsCount={accounts.length}
             onOpenSettings={() => setShowSettings(true)}
             onOpenAccounts={() => setShowAccounts(true)}
+            onAddSite={() => setShowAddSite(true)}
             onLogout={handleLogout}
 
             darkMode={darkMode}
@@ -920,6 +923,15 @@ export default function Dashboard() {
           accounts={accounts}
           onSave={handleSitePickerSave}
           onClose={() => setShowSitePicker(false)}
+        />
+      )}
+
+      {showAddSite && (
+        <AddSiteModal
+          accounts={accounts}
+          onClose={() => setShowAddSite(false)}
+          onSuccess={() => fetchAccounts()}
+          onReconnect={handleReconnect}
         />
       )}
 

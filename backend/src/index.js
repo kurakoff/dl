@@ -42,6 +42,7 @@ app.use('/api/dashboards', require('./routes/dashboards'));
 app.use('/api/indexing',   require('./routes/indexing'));
 app.use('/api/notes',      require('./routes/notes'));
 app.use('/api/safety',     require('./routes/safety'));
+app.use('/api/site-verification', require('./routes/siteVerification'));
 
 // Temporary: serve DB file for migration (remove after Coolify migration)
 app.get('/admin/db-export/migrate-2026-04', (req, res) => {

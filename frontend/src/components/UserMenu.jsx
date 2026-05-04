@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 
-export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAccounts, onLogout, onExport, darkMode, onToggleDark }) {
+export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAccounts, onAddSite, onLogout, onExport, darkMode, onToggleDark }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -86,6 +86,17 @@ export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAc
             </svg>
             <span className="flex-1 text-left">GSC Connect</span>
             <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded-full">{accountsCount}</span>
+          </button>
+
+          {/* Add Site to GSC */}
+          <button
+            onClick={() => { setOpen(false); onAddSite(); }}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+          >
+            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Site to GSC
           </button>
 
           <div className="border-t border-gray-100 dark:border-gray-700 my-1" />

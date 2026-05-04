@@ -20,8 +20,9 @@ const SCOPES = [
   'openid',
   'email',
   'profile',
-  'https://www.googleapis.com/auth/webmasters.readonly',
+  'https://www.googleapis.com/auth/webmasters',
   'https://www.googleapis.com/auth/indexing',
+  'https://www.googleapis.com/auth/siteverification',
 ];
 
 function makeClient(callbackPath) {
@@ -96,8 +97,8 @@ router.get('/callback', async (req, res) => {
 
     // Also save as connected account (primary)
     db.prepare(`
-      INSERT INTO connected_accounts (user_id, google_id, email, name, picture, access_token, refresh_token, token_expiry, has_indexing_scope)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+      INSERT INTO connected_accounts (user_id, google_id, email, name, picture, access_token, refresh_token, token_expiry, has_indexing_scope, has_siteverification_scope)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
       ON CONFLICT(user_id, google_id) DO UPDATE SET
         access_token  = excluded.access_token,
         refresh_token = COALESCE(excluded.refresh_token, connected_accounts.refresh_token),
@@ -105,7 +106,8 @@ router.get('/callback', async (req, res) => {
         email         = excluded.email,
         name          = excluded.name,
         picture       = excluded.picture,
-        has_indexing_scope = 1
+        has_indexing_scope = 1,
+        has_siteverification_scope = 1
     `).run(
       user.id, info.id, info.email, info.name, info.picture,
       tokens.access_token, tokens.refresh_token || null, tokens.expiry_date || null
@@ -127,8 +129,8 @@ async function connectGoogleAccount(userId, tokens, oauth2Client) {
   const db = getDb();
 
   db.prepare(`
-    INSERT INTO connected_accounts (user_id, google_id, email, name, picture, access_token, refresh_token, token_expiry, has_indexing_scope)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+    INSERT INTO connected_accounts (user_id, google_id, email, name, picture, access_token, refresh_token, token_expiry, has_indexing_scope, has_siteverification_scope)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
     ON CONFLICT(user_id, google_id) DO UPDATE SET
       access_token  = excluded.access_token,
       refresh_token = COALESCE(excluded.refresh_token, connected_accounts.refresh_token),
@@ -136,7 +138,8 @@ async function connectGoogleAccount(userId, tokens, oauth2Client) {
       email         = excluded.email,
       name          = excluded.name,
       picture       = excluded.picture,
-      has_indexing_scope = 1
+      has_indexing_scope = 1,
+      has_siteverification_scope = 1
   `).run(
     userId, info.id, info.email, info.name, info.picture,
     tokens.access_token, tokens.refresh_token || null, tokens.expiry_date || null
