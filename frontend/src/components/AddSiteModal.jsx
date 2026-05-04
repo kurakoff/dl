@@ -1,6 +1,23 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '../api/client';
 
+const LS_KEY = 'pending_site_verifications';
+
+function loadPending() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { return []; }
+}
+function savePending(list) {
+  localStorage.setItem(LS_KEY, JSON.stringify(list));
+}
+function addPending(entry) {
+  const list = loadPending().filter(p => !(p.domain === entry.domain && p.accountId === entry.accountId));
+  list.push(entry);
+  savePending(list);
+}
+function removePending(domain, accountId) {
+  savePending(loadPending().filter(p => !(p.domain === domain && String(p.accountId) === String(accountId))));
+}
+
 export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect }) {
   const [step, setStep] = useState(1);
   const [accountId, setAccountId] = useState('');
@@ -13,6 +30,8 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
   const [result, setResult] = useState(null);
   const [accountSearch, setAccountSearch] = useState('');
   const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
+  const [pendingDomains, setPendingDomains] = useState(loadPending);
+  const [verifyingPendingIdx, setVerifyingPendingIdx] = useState(null);
   const dropdownRef = useRef(null);
 
   const selectedAccount = accounts.find(a => String(a.id) === accountId);
@@ -35,6 +54,10 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
       const { data } = await api.post('/api/site-verification/get-token', { accountId: Number(accountId), domain });
       setToken(data.token);
       setCleanDomain(data.domain);
+      // Save to pending
+      const acc = accounts.find(a => String(a.id) === accountId);
+      addPending({ accountId: Number(accountId), domain: data.domain, token: data.token, accountEmail: acc?.email || '', createdAt: Date.now() });
+      setPendingDomains(loadPending());
       setStep(2);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to get DNS token');
@@ -43,35 +66,65 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
     }
   }
 
-  async function handleVerify() {
+  async function handleVerify(overrideAccountId, overrideDomain) {
+    const aid = overrideAccountId || Number(accountId);
+    const dom = overrideDomain || cleanDomain;
     setLoading(true);
     setError('');
     try {
-      const { data } = await api.post('/api/site-verification/verify', { accountId: Number(accountId), domain: cleanDomain });
+      const { data } = await api.post('/api/site-verification/verify', { accountId: aid, domain: dom });
+      // Remove from pending
+      removePending(dom, aid);
+      setPendingDomains(loadPending());
       setResult(data);
       setStep(3);
       onSuccess?.();
     } catch (err) {
       const msg = err.response?.data?.error || 'Verification failed';
-      if (err.response?.status === 422) {
-        setError(msg);
-      } else {
-        setError(msg);
-      }
+      setError(msg);
     } finally {
       setLoading(false);
+      setVerifyingPendingIdx(null);
     }
   }
 
-  function handleCopy() {
-    navigator.clipboard.writeText(token);
+  async function handleVerifyPending(idx) {
+    const p = pendingDomains[idx];
+    if (!p) return;
+    setVerifyingPendingIdx(idx);
+    setError('');
+    setAccountId(String(p.accountId));
+    setCleanDomain(p.domain);
+    setToken(p.token);
+    await handleVerify(p.accountId, p.domain);
+  }
+
+  function handleRemovePending(idx) {
+    const p = pendingDomains[idx];
+    if (!p) return;
+    removePending(p.domain, p.accountId);
+    setPendingDomains(loadPending());
+  }
+
+  function handleResumePending(idx) {
+    const p = pendingDomains[idx];
+    if (!p) return;
+    setAccountId(String(p.accountId));
+    setCleanDomain(p.domain);
+    setDomain(p.domain);
+    setToken(p.token);
+    setStep(2);
+  }
+
+  function handleCopy(text) {
+    navigator.clipboard.writeText(text || token);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Add Site to Google Search Console</h2>
@@ -85,10 +138,51 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
         {/* Step 1: Select account + enter domain */}
         {step === 1 && (
           <div className="space-y-4">
+            {/* Pending verifications */}
+            {pendingDomains.length > 0 && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pending Verification</label>
+                {pendingDomains.map((p, idx) => (
+                  <div key={`${p.accountId}-${p.domain}`} className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{p.domain}</p>
+                      <p className="text-xs text-gray-400 truncate">{p.accountEmail}</p>
+                    </div>
+                    <button
+                      onClick={() => handleResumePending(idx)}
+                      className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
+                      title="Show DNS record"
+                    >
+                      DNS
+                    </button>
+                    <button
+                      onClick={() => handleVerifyPending(idx)}
+                      disabled={loading}
+                      className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
+                    >
+                      {verifyingPendingIdx === idx ? 'Verifying...' : 'Verify'}
+                    </button>
+                    <button
+                      onClick={() => handleRemovePending(idx)}
+                      className="p-1 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition"
+                      title="Remove"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+                {error && verifyingPendingIdx !== null && <p className="text-sm text-red-500">{error}</p>}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
+                  <p className="text-xs text-gray-400 mb-2">Or add a new domain:</p>
+                </div>
+              </div>
+            )}
+
             <div ref={dropdownRef}>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Google Account</label>
               <div className="relative">
-                {/* Selected account display / search input */}
                 {selectedAccount && !accountDropdownOpen ? (
                   <button
                     type="button"
@@ -119,7 +213,6 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
                   />
                 )}
 
-                {/* Dropdown list */}
                 {accountDropdownOpen && (
                   <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                     {filteredAccounts.length === 0 ? (
@@ -180,14 +273,14 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
               <p className="text-xs text-gray-400 mt-1">Enter domain without protocol (e.g. example.com)</p>
             </div>
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && verifyingPendingIdx === null && <p className="text-sm text-red-500">{error}</p>}
 
             <button
               onClick={handleGetToken}
               disabled={loading || !accountId || !domain.trim() || needsReconnect}
               className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {loading ? 'Getting DNS record...' : 'Get DNS Record'}
+              {loading && verifyingPendingIdx === null ? 'Getting DNS record...' : 'Get DNS Record'}
             </button>
           </div>
         )}
@@ -215,7 +308,7 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
                     {token}
                   </code>
                   <button
-                    onClick={handleCopy}
+                    onClick={() => handleCopy()}
                     className="flex-shrink-0 px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition"
                   >
                     {copied ? 'Copied!' : 'Copy'}
@@ -226,6 +319,7 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
 
             <p className="text-xs text-gray-400">
               After adding the record, DNS propagation may take a few minutes. Click Verify when ready.
+              You can also close this dialog and verify later — the domain will appear in "Pending Verification".
             </p>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
@@ -238,7 +332,7 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
                 Back
               </button>
               <button
-                onClick={handleVerify}
+                onClick={() => handleVerify()}
                 disabled={loading}
                 className="flex-1 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
