@@ -12,7 +12,8 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
   const [copied, setCopied] = useState(false);
   const [result, setResult] = useState(null); // { success, siteUrl } or null
 
-  const eligibleAccounts = accounts.filter(a => a.has_siteverification_scope);
+  const selectedAccount = accounts.find(a => String(a.id) === accountId);
+  const needsReconnect = selectedAccount && !selectedAccount.has_siteverification_scope;
 
   async function handleGetToken() {
     if (!accountId || !domain.trim()) return;
@@ -74,42 +75,26 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Google Account</label>
-              {eligibleAccounts.length === 0 ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-amber-600 dark:text-amber-400">
-                    Your connected accounts need to be reconnected to grant the new Site Verification permission.
-                  </p>
-                  <div className="space-y-2">
-                    {accounts.map(a => (
-                      <button
-                        key={a.id}
-                        onClick={() => onReconnect(a.email)}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition"
-                      >
-                        {a.picture ? (
-                          <img src={a.picture} alt="" className="w-6 h-6 rounded-full" referrerPolicy="no-referrer" />
-                        ) : (
-                          <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-xs font-semibold">
-                            {a.email[0].toUpperCase()}
-                          </div>
-                        )}
-                        <span className="flex-1 text-left truncate">{a.email}</span>
-                        <span className="text-xs font-medium">Reconnect</span>
-                      </button>
-                    ))}
-                  </div>
+              <select
+                value={accountId}
+                onChange={e => setAccountId(e.target.value)}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select account...</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.email}{a.has_siteverification_scope ? '' : ' (needs reconnect)'}</option>
+                ))}
+              </select>
+              {needsReconnect && (
+                <div className="flex items-center justify-between mt-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <span className="text-xs text-amber-700 dark:text-amber-400">This account needs reconnect for Site Verification</span>
+                  <button
+                    onClick={() => onReconnect(selectedAccount.email)}
+                    className="ml-2 px-3 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition"
+                  >
+                    Reconnect
+                  </button>
                 </div>
-              ) : (
-                <select
-                  value={accountId}
-                  onChange={e => setAccountId(e.target.value)}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select account...</option>
-                  {eligibleAccounts.map(a => (
-                    <option key={a.id} value={a.id}>{a.email}</option>
-                  ))}
-                </select>
               )}
             </div>
 
@@ -130,7 +115,7 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
 
             <button
               onClick={handleGetToken}
-              disabled={loading || !accountId || !domain.trim()}
+              disabled={loading || !accountId || !domain.trim() || needsReconnect}
               className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               {loading ? 'Getting DNS record...' : 'Get DNS Record'}
