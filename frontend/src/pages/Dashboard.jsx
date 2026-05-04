@@ -930,7 +930,7 @@ export default function Dashboard() {
         <AddSiteModal
           accounts={accounts}
           onClose={() => setShowAddSite(false)}
-          onSuccess={() => fetchAccounts()}
+          onSuccess={() => { fetchAccounts(); fetchAnalytics(); }}
           onReconnect={handleReconnect}
         />
       )}
