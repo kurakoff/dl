@@ -12,10 +12,32 @@ function cleanDomain(input) {
   d = d.replace(/^https?:\/\//, '');
   d = d.replace(/^www\./, '');
   d = d.replace(/\/+$/, '');
-  // Remove any path
   d = d.split('/')[0];
   return d;
 }
+
+// GET /api/site-verification/pending
+router.get('/pending', (req, res) => {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT pv.id, pv.connected_account_id as accountId, pv.domain, pv.token, pv.created_at,
+           ca.email as accountEmail
+    FROM pending_verifications pv
+    JOIN connected_accounts ca ON ca.id = pv.connected_account_id
+    WHERE pv.user_id = ?
+    ORDER BY pv.created_at DESC
+  `).all(req.userId);
+  res.json(rows);
+});
+
+// DELETE /api/site-verification/pending/:id
+router.delete('/pending/:id', (req, res) => {
+  const db = getDb();
+  const row = db.prepare('SELECT id FROM pending_verifications WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  db.prepare('DELETE FROM pending_verifications WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
 
 // POST /api/site-verification/get-token
 router.post('/get-token', async (req, res) => {
@@ -45,7 +67,18 @@ router.post('/get-token', async (req, res) => {
       },
     });
 
-    res.json({ token: tokenRes.data.token, domain });
+    const token = tokenRes.data.token;
+
+    // Save to pending_verifications
+    db.prepare(`
+      INSERT INTO pending_verifications (user_id, connected_account_id, domain, token)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, connected_account_id, domain) DO UPDATE SET
+        token = excluded.token,
+        created_at = CURRENT_TIMESTAMP
+    `).run(req.userId, accountId, domain, token);
+
+    res.json({ token, domain });
   } catch (err) {
     console.error('getToken error:', err.message);
     const msg = err.response?.data?.error?.message || err.message;
@@ -71,7 +104,6 @@ router.post('/verify', async (req, res) => {
     const client = await getClientForAccount(account);
     const sv = google.siteVerification({ version: 'v1', auth: client });
 
-    // Verify ownership
     await sv.webResource.insert({
       verificationMethod: 'DNS_TXT',
       requestBody: {
@@ -79,15 +111,18 @@ router.post('/verify', async (req, res) => {
       },
     });
 
-    // Add to Search Console as domain property
     const sc = google.searchconsole({ version: 'v1', auth: client });
     const siteUrl = 'sc-domain:' + domain;
     await sc.sites.add({ siteUrl });
 
-    // Auto-add to selected_sites
     db.prepare(
       'INSERT OR IGNORE INTO selected_sites (connected_account_id, site_url) VALUES (?, ?)'
     ).run(account.id, siteUrl);
+
+    // Remove from pending
+    db.prepare(
+      'DELETE FROM pending_verifications WHERE user_id = ? AND connected_account_id = ? AND domain = ?'
+    ).run(req.userId, accountId, domain);
 
     res.json({ success: true, siteUrl, domain });
   } catch (err) {

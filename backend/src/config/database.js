@@ -148,6 +148,21 @@ function initDb() {
     console.error('Migration (has_siteverification_scope) error:', err.message);
   }
 
+  // Pending site verifications
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS pending_verifications (
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id               INTEGER NOT NULL,
+      connected_account_id  INTEGER NOT NULL,
+      domain                TEXT NOT NULL,
+      token                 TEXT NOT NULL,
+      created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (connected_account_id) REFERENCES connected_accounts(id) ON DELETE CASCADE,
+      UNIQUE(user_id, connected_account_id, domain)
+    )
+  `);
+
   // Create site_notes table
   database.exec(`
     CREATE TABLE IF NOT EXISTS site_notes (

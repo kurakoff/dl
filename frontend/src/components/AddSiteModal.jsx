@@ -1,23 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '../api/client';
 
-const LS_KEY = 'pending_site_verifications';
-
-function loadPending() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { return []; }
-}
-function savePending(list) {
-  localStorage.setItem(LS_KEY, JSON.stringify(list));
-}
-function addPending(entry) {
-  const list = loadPending().filter(p => !(p.domain === entry.domain && p.accountId === entry.accountId));
-  list.push(entry);
-  savePending(list);
-}
-function removePending(domain, accountId) {
-  savePending(loadPending().filter(p => !(p.domain === domain && String(p.accountId) === String(accountId))));
-}
-
 export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect }) {
   const [step, setStep] = useState(1);
   const [accountId, setAccountId] = useState('');
@@ -30,13 +13,18 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
   const [result, setResult] = useState(null);
   const [accountSearch, setAccountSearch] = useState('');
   const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
-  const [pendingDomains, setPendingDomains] = useState(loadPending);
-  const [verifyingPendingIdx, setVerifyingPendingIdx] = useState(null);
+  const [pendingDomains, setPendingDomains] = useState([]);
+  const [verifyingPendingId, setVerifyingPendingId] = useState(null);
   const dropdownRef = useRef(null);
 
   const selectedAccount = accounts.find(a => String(a.id) === accountId);
   const needsReconnect = selectedAccount && !selectedAccount.has_siteverification_scope;
   const filteredAccounts = accounts.filter(a => a.email.toLowerCase().includes(accountSearch.toLowerCase()));
+
+  // Load pending from API
+  useEffect(() => {
+    api.get('/api/site-verification/pending').then(r => setPendingDomains(r.data)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handler = (e) => {
@@ -46,6 +34,10 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  function refreshPending() {
+    api.get('/api/site-verification/pending').then(r => setPendingDomains(r.data)).catch(() => {});
+  }
+
   async function handleGetToken() {
     if (!accountId || !domain.trim()) return;
     setLoading(true);
@@ -54,10 +46,7 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
       const { data } = await api.post('/api/site-verification/get-token', { accountId: Number(accountId), domain });
       setToken(data.token);
       setCleanDomain(data.domain);
-      // Save to pending
-      const acc = accounts.find(a => String(a.id) === accountId);
-      addPending({ accountId: Number(accountId), domain: data.domain, token: data.token, accountEmail: acc?.email || '', createdAt: Date.now() });
-      setPendingDomains(loadPending());
+      refreshPending();
       setStep(2);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to get DNS token');
@@ -73,25 +62,20 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
     setError('');
     try {
       const { data } = await api.post('/api/site-verification/verify', { accountId: aid, domain: dom });
-      // Remove from pending
-      removePending(dom, aid);
-      setPendingDomains(loadPending());
+      refreshPending();
       setResult(data);
       setStep(3);
       onSuccess?.();
     } catch (err) {
-      const msg = err.response?.data?.error || 'Verification failed';
-      setError(msg);
+      setError(err.response?.data?.error || 'Verification failed');
     } finally {
       setLoading(false);
-      setVerifyingPendingIdx(null);
+      setVerifyingPendingId(null);
     }
   }
 
-  async function handleVerifyPending(idx) {
-    const p = pendingDomains[idx];
-    if (!p) return;
-    setVerifyingPendingIdx(idx);
+  async function handleVerifyPending(p) {
+    setVerifyingPendingId(p.id);
     setError('');
     setAccountId(String(p.accountId));
     setCleanDomain(p.domain);
@@ -99,16 +83,14 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
     await handleVerify(p.accountId, p.domain);
   }
 
-  function handleRemovePending(idx) {
-    const p = pendingDomains[idx];
-    if (!p) return;
-    removePending(p.domain, p.accountId);
-    setPendingDomains(loadPending());
+  async function handleRemovePending(p) {
+    try {
+      await api.delete(`/api/site-verification/pending/${p.id}`);
+      refreshPending();
+    } catch {}
   }
 
-  function handleResumePending(idx) {
-    const p = pendingDomains[idx];
-    if (!p) return;
+  function handleResumePending(p) {
     setAccountId(String(p.accountId));
     setCleanDomain(p.domain);
     setDomain(p.domain);
@@ -135,35 +117,35 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
           </button>
         </div>
 
-        {/* Step 1: Select account + enter domain */}
+        {/* Step 1 */}
         {step === 1 && (
           <div className="space-y-4">
             {/* Pending verifications */}
             {pendingDomains.length > 0 && (
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pending Verification</label>
-                {pendingDomains.map((p, idx) => (
-                  <div key={`${p.accountId}-${p.domain}`} className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                {pendingDomains.map(p => (
+                  <div key={p.id} className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{p.domain}</p>
                       <p className="text-xs text-gray-400 truncate">{p.accountEmail}</p>
                     </div>
                     <button
-                      onClick={() => handleResumePending(idx)}
+                      onClick={() => handleResumePending(p)}
                       className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
                       title="Show DNS record"
                     >
                       DNS
                     </button>
                     <button
-                      onClick={() => handleVerifyPending(idx)}
+                      onClick={() => handleVerifyPending(p)}
                       disabled={loading}
                       className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
                     >
-                      {verifyingPendingIdx === idx ? 'Verifying...' : 'Verify'}
+                      {verifyingPendingId === p.id ? 'Verifying...' : 'Verify'}
                     </button>
                     <button
-                      onClick={() => handleRemovePending(idx)}
+                      onClick={() => handleRemovePending(p)}
                       className="p-1 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition"
                       title="Remove"
                     >
@@ -173,7 +155,7 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
                     </button>
                   </div>
                 ))}
-                {error && verifyingPendingIdx !== null && <p className="text-sm text-red-500">{error}</p>}
+                {error && verifyingPendingId !== null && <p className="text-sm text-red-500">{error}</p>}
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
                   <p className="text-xs text-gray-400 mb-2">Or add a new domain:</p>
                 </div>
@@ -273,19 +255,19 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
               <p className="text-xs text-gray-400 mt-1">Enter domain without protocol (e.g. example.com)</p>
             </div>
 
-            {error && verifyingPendingIdx === null && <p className="text-sm text-red-500">{error}</p>}
+            {error && verifyingPendingId === null && <p className="text-sm text-red-500">{error}</p>}
 
             <button
               onClick={handleGetToken}
               disabled={loading || !accountId || !domain.trim() || needsReconnect}
               className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {loading && verifyingPendingIdx === null ? 'Getting DNS record...' : 'Get DNS Record'}
+              {loading && verifyingPendingId === null ? 'Getting DNS record...' : 'Get DNS Record'}
             </button>
           </div>
         )}
 
-        {/* Step 2: Show DNS record + verify */}
+        {/* Step 2: DNS record + verify */}
         {step === 2 && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -319,7 +301,7 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
 
             <p className="text-xs text-gray-400">
               After adding the record, DNS propagation may take a few minutes. Click Verify when ready.
-              You can also close this dialog and verify later — the domain will appear in "Pending Verification".
+              You can also close this dialog and verify later.
             </p>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
