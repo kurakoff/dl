@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import api from '../api/client';
 
 export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect }) {
@@ -10,10 +10,22 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [result, setResult] = useState(null); // { success, siteUrl } or null
+  const [result, setResult] = useState(null);
+  const [accountSearch, setAccountSearch] = useState('');
+  const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
   const selectedAccount = accounts.find(a => String(a.id) === accountId);
   const needsReconnect = selectedAccount && !selectedAccount.has_siteverification_scope;
+  const filteredAccounts = accounts.filter(a => a.email.toLowerCase().includes(accountSearch.toLowerCase()));
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setAccountDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   async function handleGetToken() {
     if (!accountId || !domain.trim()) return;
@@ -73,18 +85,75 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
         {/* Step 1: Select account + enter domain */}
         {step === 1 && (
           <div className="space-y-4">
-            <div>
+            <div ref={dropdownRef}>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Google Account</label>
-              <select
-                value={accountId}
-                onChange={e => setAccountId(e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">Select account...</option>
-                {accounts.map(a => (
-                  <option key={a.id} value={a.id}>{a.email}{a.has_siteverification_scope ? '' : ' (needs reconnect)'}</option>
-                ))}
-              </select>
+              <div className="relative">
+                {/* Selected account display / search input */}
+                {selectedAccount && !accountDropdownOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => { setAccountDropdownOpen(true); setAccountSearch(''); }}
+                    className="w-full flex items-center gap-2 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-left"
+                  >
+                    {selectedAccount.picture ? (
+                      <img src={selectedAccount.picture} alt="" className="w-5 h-5 rounded-full flex-shrink-0" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-[10px] font-semibold text-blue-600 dark:text-blue-300 flex-shrink-0">
+                        {selectedAccount.email[0].toUpperCase()}
+                      </div>
+                    )}
+                    <span className="flex-1 truncate text-gray-800 dark:text-gray-200">{selectedAccount.email}</span>
+                    <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                ) : (
+                  <input
+                    type="text"
+                    value={accountSearch}
+                    onChange={e => { setAccountSearch(e.target.value); setAccountDropdownOpen(true); }}
+                    onFocus={() => setAccountDropdownOpen(true)}
+                    placeholder="Search accounts..."
+                    autoFocus={accountDropdownOpen}
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                )}
+
+                {/* Dropdown list */}
+                {accountDropdownOpen && (
+                  <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {filteredAccounts.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-gray-400">No accounts found</div>
+                    ) : (
+                      filteredAccounts.map(a => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => {
+                            setAccountId(String(a.id));
+                            setAccountSearch('');
+                            setAccountDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-600 transition ${String(a.id) === accountId ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}
+                        >
+                          {a.picture ? (
+                            <img src={a.picture} alt="" className="w-5 h-5 rounded-full flex-shrink-0" referrerPolicy="no-referrer" />
+                          ) : (
+                            <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-[10px] font-semibold text-blue-600 dark:text-blue-300 flex-shrink-0">
+                              {a.email[0].toUpperCase()}
+                            </div>
+                          )}
+                          <span className="flex-1 text-left truncate text-gray-800 dark:text-gray-200">{a.email}</span>
+                          {!a.has_siteverification_scope && (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded flex-shrink-0">reconnect</span>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
               {needsReconnect && (
                 <div className="flex items-center justify-between mt-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                   <span className="text-xs text-amber-700 dark:text-amber-400">This account needs reconnect for Site Verification</span>
