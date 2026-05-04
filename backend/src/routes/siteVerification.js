@@ -95,8 +95,8 @@ router.post('/verify', async (req, res) => {
     const status = err.response?.status;
     const msg = err.response?.data?.error?.message || err.message;
 
-    if (status === 403 || (msg && msg.toLowerCase().includes('dns'))) {
-      return res.status(422).json({ error: 'DNS record not found yet. Please wait for DNS propagation and try again.' });
+    if (status === 403 || (msg && (msg.toLowerCase().includes('dns') || msg.toLowerCase().includes('verification token') || msg.toLowerCase().includes('could not be found')))) {
+      return res.status(422).json({ error: 'DNS record not found yet. Please wait a few minutes for DNS propagation and try again.' });
     }
     res.status(500).json({ error: msg });
   }
