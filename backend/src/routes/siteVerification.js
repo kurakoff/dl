@@ -137,4 +137,93 @@ router.post('/verify', async (req, res) => {
   }
 });
 
+// POST /api/site-verification/verify-cf
+router.post('/verify-cf', async (req, res) => {
+  const { accountId, domain: rawDomain, cfApiKey, cfZoneId } = req.body;
+  if (!accountId || !rawDomain || !cfApiKey || !cfZoneId) {
+    return res.status(400).json({ error: 'accountId, domain, cfApiKey and cfZoneId are required' });
+  }
+
+  const db = getDb();
+  const account = db.prepare(
+    'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ?'
+  ).get(accountId, req.userId);
+
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+  if (!account.has_siteverification_scope) {
+    return res.status(403).json({ error: 'Account missing siteverification scope. Please reconnect.' });
+  }
+
+  const domain = cleanDomain(rawDomain);
+
+  try {
+    // 1. Get TXT token from Google
+    const client = await getClientForAccount(account);
+    const sv = google.siteVerification({ version: 'v1', auth: client });
+
+    const tokenRes = await sv.webResource.getToken({
+      requestBody: {
+        site: { type: 'INET_DOMAIN', identifier: domain },
+        verificationMethod: 'DNS_TXT',
+      },
+    });
+    const token = tokenRes.data.token;
+
+    // 2. Add TXT record to Cloudflare
+    const cfRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${cfZoneId}/dns_records`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cfApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'TXT',
+        name: domain,
+        content: token,
+        ttl: 1, // auto
+      }),
+    });
+    const cfData = await cfRes.json();
+
+    if (!cfData.success) {
+      const cfError = cfData.errors?.[0]?.message || 'Unknown error';
+      // If record already exists, continue with verification
+      if (!cfError.toLowerCase().includes('already exist')) {
+        return res.status(422).json({ error: `Cloudflare: ${cfError}` });
+      }
+    }
+
+    // 3. Wait for DNS propagation (CF is usually instant)
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // 4. Verify domain in Google
+    await sv.webResource.insert({
+      verificationMethod: 'DNS_TXT',
+      requestBody: {
+        site: { type: 'INET_DOMAIN', identifier: domain },
+      },
+    });
+
+    // 5. Add site to GSC
+    const sc = google.searchconsole({ version: 'v1', auth: client });
+    const siteUrl = 'sc-domain:' + domain;
+    await sc.sites.add({ siteUrl });
+
+    db.prepare(
+      'INSERT OR IGNORE INTO selected_sites (connected_account_id, site_url) VALUES (?, ?)'
+    ).run(account.id, siteUrl);
+
+    // 6. Clean up pending verifications if any
+    db.prepare(
+      'DELETE FROM pending_verifications WHERE user_id = ? AND connected_account_id = ? AND domain = ?'
+    ).run(req.userId, accountId, domain);
+
+    res.json({ success: true, siteUrl, domain });
+  } catch (err) {
+    console.error('verify-cf error:', err.message, err.response?.data);
+    const msg = err.response?.data?.error?.message || err.message;
+    res.status(500).json({ error: msg });
+  }
+});
+
 module.exports = router;

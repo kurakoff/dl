@@ -15,6 +15,9 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
   const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
   const [pendingDomains, setPendingDomains] = useState([]);
   const [verifyingPendingId, setVerifyingPendingId] = useState(null);
+  const [method, setMethod] = useState('cloudflare');
+  const [cfApiKey, setCfApiKey] = useState('');
+  const [cfZoneId, setCfZoneId] = useState('');
   const dropdownRef = useRef(null);
 
   const selectedAccount = accounts.find(a => String(a.id) === accountId);
@@ -50,6 +53,27 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
       setStep(2);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to get DNS token');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCloudflareVerify() {
+    if (!accountId || !domain.trim() || !cfApiKey.trim() || !cfZoneId.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await api.post('/api/site-verification/verify-cf', {
+        accountId: Number(accountId),
+        domain,
+        cfApiKey: cfApiKey.trim(),
+        cfZoneId: cfZoneId.trim(),
+      });
+      setResult(data);
+      setStep(3);
+      onSuccess?.();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Cloudflare verification failed');
     } finally {
       setLoading(false);
     }
@@ -250,20 +274,77 @@ export default function AddSiteModal({ accounts, onClose, onSuccess, onReconnect
                 onChange={e => setDomain(e.target.value)}
                 placeholder="example.com"
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                onKeyDown={e => e.key === 'Enter' && handleGetToken()}
+                onKeyDown={e => e.key === 'Enter' && (method === 'cloudflare' ? handleCloudflareVerify() : handleGetToken())}
               />
               <p className="text-xs text-gray-400 mt-1">Enter domain without protocol (e.g. example.com)</p>
             </div>
 
+            {/* Method toggle */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Verification Method</label>
+              <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setMethod('cloudflare')}
+                  className={`flex-1 py-1.5 text-sm font-medium rounded-md transition ${method === 'cloudflare' ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                >
+                  Cloudflare API
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMethod('manual')}
+                  className={`flex-1 py-1.5 text-sm font-medium rounded-md transition ${method === 'manual' ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                >
+                  Manual DNS
+                </button>
+              </div>
+            </div>
+
+            {/* Cloudflare fields */}
+            {method === 'cloudflare' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CF API Token</label>
+                  <input
+                    type="password"
+                    value={cfApiKey}
+                    onChange={e => setCfApiKey(e.target.value)}
+                    placeholder="Cloudflare API token with DNS edit permissions"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Zone ID</label>
+                  <input
+                    type="text"
+                    value={cfZoneId}
+                    onChange={e => setCfZoneId(e.target.value)}
+                    placeholder="Cloudflare Zone ID"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            )}
+
             {error && verifyingPendingId === null && <p className="text-sm text-red-500">{error}</p>}
 
-            <button
-              onClick={handleGetToken}
-              disabled={loading || !accountId || !domain.trim() || needsReconnect}
-              className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-            >
-              {loading && verifyingPendingId === null ? 'Getting DNS record...' : 'Get DNS Record'}
-            </button>
+            {method === 'cloudflare' ? (
+              <button
+                onClick={handleCloudflareVerify}
+                disabled={loading || !accountId || !domain.trim() || !cfApiKey.trim() || !cfZoneId.trim() || needsReconnect}
+                className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                {loading && verifyingPendingId === null ? 'Adding site via Cloudflare...' : 'Add Site'}
+              </button>
+            ) : (
+              <button
+                onClick={handleGetToken}
+                disabled={loading || !accountId || !domain.trim() || needsReconnect}
+                className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                {loading && verifyingPendingId === null ? 'Getting DNS record...' : 'Get DNS Record'}
+              </button>
+            )}
           </div>
         )}
 
