@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { addAccount } from '../utils/accountManager';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
 export default function Login() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const isAddAccount = searchParams.get('addAccount') === 'true';
   const [mode, setMode] = useState('login'); // login | register | register-verify | forgot | forgot-verify | forgot-newpass
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,7 +17,7 @@ export default function Login() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!isAddAccount && localStorage.getItem('auth_token')) {
+    if (localStorage.getItem('auth_token')) {
       navigate('/dashboard', { replace: true });
     }
   }, []); // eslint-disable-line

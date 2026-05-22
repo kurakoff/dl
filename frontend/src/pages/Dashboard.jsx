@@ -14,6 +14,7 @@ import SitePickerModal from '../components/SitePickerModal';
 import SafetyBanner from '../components/SafetyBanner';
 import SafetyAlertModal from '../components/SafetyAlertModal';
 import AddSiteModal from '../components/AddSiteModal';
+import LoginModal from '../components/LoginModal';
 
 function daysAgo(n) {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
@@ -99,6 +100,7 @@ export default function Dashboard() {
   const [showAccounts,   setShowAccounts]   = useState(false);
   const [showSitePicker, setShowSitePicker] = useState(false);
   const [showAddSite,    setShowAddSite]    = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [globalMetrics,  setGlobalMetrics]  = useState(['clicks']);
   const [darkMode,       setDarkMode]       = useState(() => localStorage.getItem('theme') === 'dark');
 
@@ -311,7 +313,13 @@ export default function Dashboard() {
   };
 
   const handleAddAnotherAccount = () => {
-    navigate('/?addAccount=true');
+    setShowLoginModal(true);
+  };
+
+  const handleLoginModalSuccess = ({ token, user }) => {
+    addAccount({ userId: user.id, email: user.email, name: user.name, picture: user.picture, token });
+    setShowLoginModal(false);
+    window.location.reload();
   };
 
   const handleLogoutAll = () => {
@@ -984,6 +992,13 @@ export default function Dashboard() {
             setSafetyAlertDismissed(true);
             sessionStorage.setItem('safety_alert_dismissed', 'true');
           }}
+        />
+      )}
+
+      {showLoginModal && (
+        <LoginModal
+          onClose={() => setShowLoginModal(false)}
+          onSuccess={handleLoginModalSuccess}
         />
       )}
 
