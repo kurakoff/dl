@@ -580,6 +580,38 @@ function SitemapsView({ accountId, siteUrl }) {
   );
 }
 
+function InspectSection({ title, icon, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border-t border-gray-200/50 dark:border-gray-700/50">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition"
+      >
+        <span className="flex items-center gap-1.5">{icon} {title}</span>
+        <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && <div className="px-4 pb-3">{children}</div>}
+    </div>
+  );
+}
+
+function InspectField({ label, value, hint, fullWidth, children }) {
+  return (
+    <div className={fullWidth ? 'col-span-2' : ''}>
+      <span className="text-gray-400 dark:text-gray-500 text-[11px]">{label}</span>
+      {children || (
+        <p className="text-gray-700 dark:text-gray-200 font-medium text-xs mt-0.5">{value}</p>
+      )}
+      {hint && <p className="text-[10px] text-gray-400 mt-0.5">{hint}</p>}
+    </div>
+  );
+}
+
+function fmt(s) { return s ? s.replace(/_/g, ' ').toLowerCase().replace(/^./, c => c.toUpperCase()) : ''; }
+
 function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast, onCanonicalFound }) {
   const [url, setUrl] = useState('');
   const [inspecting, setInspecting] = useState(false);
@@ -635,6 +667,12 @@ function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast, onCanonic
 
   const vs = result ? (VERDICT_STYLE[result.verdict] || VERDICT_STYLE.VERDICT_UNSPECIFIED) : null;
 
+  const hasCrawlData = result && (result.lastCrawlTime || result.crawledAs || result.robotsTxtState || result.pageFetchState || result.indexingState);
+  const hasDiscovery = result && ((result.sitemap && result.sitemap.length > 0) || (result.referringUrls && result.referringUrls.length > 0));
+  const hasCanonicals = result && (result.userCanonical || result.googleCanonical);
+  const hasMobile = result && result.mobileUsability;
+  const hasRich = result && result.richResults;
+
   return (
     <div className="space-y-4">
       {/* URL input */}
@@ -677,9 +715,9 @@ function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast, onCanonic
 
       {/* Result */}
       {result && vs && (
-        <div className={`rounded-xl border ${vs.border} ${vs.bg} overflow-hidden`}>
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
           {/* Verdict header */}
-          <div className="px-4 py-3 flex items-center justify-between">
+          <div className={`px-4 py-3 flex items-center justify-between ${vs.bg}`}>
             <div className="flex items-center gap-2">
               <span className={`text-lg font-bold ${vs.text}`}>{vs.icon}</span>
               <div>
@@ -689,85 +727,195 @@ function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast, onCanonic
                 )}
               </div>
             </div>
-            {/* Request Indexing button */}
-            {isSiteOwner && (
-              <button
-                onClick={handleRequestIndexing}
-                disabled={indexing || indexDone}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
-                  indexDone
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                    : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'
-                } disabled:opacity-60`}
-              >
-                {indexing ? 'Requesting...' : indexDone ? 'Indexing Requested' : 'Request Indexing'}
-              </button>
-            )}
-          </div>
-
-          {/* Details */}
-          <div className="border-t border-gray-200/50 dark:border-gray-700/50 px-4 py-3">
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              {result.indexingState && (
-                <div>
-                  <span className="text-gray-400">Indexing</span>
-                  <p className="text-gray-700 dark:text-gray-200 font-medium">{result.indexingState.replace(/_/g, ' ').toLowerCase()}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Whether Google is allowed to index this page</p>
-                </div>
+            <div className="flex items-center gap-2">
+              {result.inspectionResultLink && (
+                <a
+                  href={result.inspectionResultLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition"
+                >
+                  View in GSC
+                </a>
               )}
-              {result.crawledAs && (
-                <div>
-                  <span className="text-gray-400">Crawled as</span>
-                  <p className="text-gray-700 dark:text-gray-200 font-medium">{result.crawledAs}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">The user agent Google used to crawl</p>
-                </div>
-              )}
-              {result.pageFetchState && (
-                <div>
-                  <span className="text-gray-400">Page fetch</span>
-                  <p className="text-gray-700 dark:text-gray-200 font-medium">{result.pageFetchState.replace(/_/g, ' ').toLowerCase()}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Whether Google could successfully fetch the page</p>
-                </div>
-              )}
-              {result.robotsTxtState && (
-                <div>
-                  <span className="text-gray-400">Robots.txt</span>
-                  <p className="text-gray-700 dark:text-gray-200 font-medium">{result.robotsTxtState.replace(/_/g, ' ').toLowerCase()}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Whether robots.txt allows or blocks crawling</p>
-                </div>
-              )}
-              {result.lastCrawlTime && (
-                <div>
-                  <span className="text-gray-400">Last crawl</span>
-                  <p className="text-gray-700 dark:text-gray-200 font-medium">{new Date(result.lastCrawlTime).toLocaleString()}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">When Google last visited this page</p>
-                </div>
-              )}
-              {result.userCanonical && (
-                <div className="col-span-2">
-                  <span className="text-gray-400">User canonical</span>
-                  <p className="text-gray-700 dark:text-gray-200 font-medium truncate" title={result.userCanonical}>{result.userCanonical}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">The canonical URL you specified in your page's HTML via &lt;link rel="canonical"&gt;</p>
-                </div>
-              )}
-              {result.googleCanonical && (
-                <div className="col-span-2">
-                  <span className="text-gray-400">Google canonical</span>
-                  {result.googleCanonical === result.userCanonical ? (
-                    <>
-                      <p className="text-green-600 dark:text-green-400 font-medium">Matches user canonical</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Google agrees with your canonical — this page will appear in search results</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-orange-500 font-medium truncate" title={result.googleCanonical}>{result.googleCanonical}</p>
-                      <p className="text-[10px] text-orange-400 mt-0.5">Google chose a different canonical — this page may not appear in search, Google treats it as a duplicate</p>
-                    </>
-                  )}
-                </div>
+              {isSiteOwner && (
+                <button
+                  onClick={handleRequestIndexing}
+                  disabled={indexing || indexDone}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
+                    indexDone
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                      : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'
+                  } disabled:opacity-60`}
+                >
+                  {indexing ? 'Requesting...' : indexDone ? 'Indexing Requested' : 'Request Indexing'}
+                </button>
               )}
             </div>
           </div>
+
+          {/* Discovery section */}
+          {hasDiscovery && (
+            <InspectSection title="Discovery" icon={<svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>}>
+              <div className="space-y-2 text-xs">
+                {result.sitemap && result.sitemap.length > 0 && (
+                  <div>
+                    <span className="text-gray-400 dark:text-gray-500 text-[11px]">Sitemaps</span>
+                    <ul className="mt-0.5 space-y-0.5">
+                      {(Array.isArray(result.sitemap) ? result.sitemap : [result.sitemap]).map((s, i) => (
+                        <li key={i} className="text-blue-600 dark:text-blue-400 font-medium truncate" title={s}>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {result.referringUrls && result.referringUrls.length > 0 && (
+                  <div>
+                    <span className="text-gray-400 dark:text-gray-500 text-[11px]">Referring pages</span>
+                    <ul className="mt-0.5 space-y-0.5">
+                      {result.referringUrls.map((u, i) => (
+                        <li key={i} className="text-blue-600 dark:text-blue-400 font-medium truncate" title={u}>{u}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </InspectSection>
+          )}
+
+          {/* Crawl section */}
+          {hasCrawlData && (
+            <InspectSection title="Crawl" icon={<svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}>
+              <div className="grid grid-cols-2 gap-3">
+                {result.lastCrawlTime && (
+                  <InspectField label="Last crawl" value={new Date(result.lastCrawlTime).toLocaleString()} />
+                )}
+                {result.crawledAs && (
+                  <InspectField label="Crawled as" value={result.crawledAs} />
+                )}
+                {result.robotsTxtState && (
+                  <InspectField label="Crawl allowed?" value={fmt(result.robotsTxtState)} />
+                )}
+                {result.pageFetchState && (
+                  <InspectField label="Page fetch" value={fmt(result.pageFetchState)} />
+                )}
+                {result.indexingState && (
+                  <InspectField label="Indexing allowed?" value={fmt(result.indexingState)} />
+                )}
+              </div>
+            </InspectSection>
+          )}
+
+          {/* Indexing / Canonicals section */}
+          {hasCanonicals && (
+            <InspectSection title="Indexing" icon={<svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>}>
+              <div className="grid grid-cols-1 gap-3">
+                {result.userCanonical && (
+                  <InspectField label="User-declared canonical" fullWidth>
+                    <p className="text-gray-700 dark:text-gray-200 font-medium text-xs mt-0.5 truncate" title={result.userCanonical}>{result.userCanonical}</p>
+                  </InspectField>
+                )}
+                {result.googleCanonical && (
+                  <InspectField label="Google-selected canonical" fullWidth>
+                    {result.googleCanonical === result.userCanonical ? (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Match</span>
+                        <span className="text-xs text-green-600 dark:text-green-400 font-medium">Same as user canonical</span>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-orange-500 font-medium text-xs mt-0.5 truncate" title={result.googleCanonical}>{result.googleCanonical}</p>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">Mismatch</span>
+                          <span className="text-[10px] text-orange-400">Google chose a different canonical</span>
+                        </div>
+                      </>
+                    )}
+                  </InspectField>
+                )}
+              </div>
+            </InspectSection>
+          )}
+
+          {/* Mobile Usability section */}
+          {hasMobile && (
+            <InspectSection title="Mobile Usability" icon={<svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>} defaultOpen={result.mobileUsability.verdict === 'FAIL'}>
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400 dark:text-gray-500 text-[11px]">Verdict</span>
+                  {result.mobileUsability.verdict === 'PASS' ? (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Mobile friendly</span>
+                  ) : result.mobileUsability.verdict === 'FAIL' ? (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Not mobile friendly</span>
+                  ) : (
+                    <span className="text-gray-500 dark:text-gray-400 font-medium">{fmt(result.mobileUsability.verdict)}</span>
+                  )}
+                </div>
+                {result.mobileUsability.issues && result.mobileUsability.issues.length > 0 && (
+                  <div>
+                    <span className="text-gray-400 dark:text-gray-500 text-[11px]">Issues</span>
+                    <ul className="mt-1 space-y-1">
+                      {result.mobileUsability.issues.map((issue, i) => (
+                        <li key={i} className="flex items-start gap-1.5">
+                          <span className="text-red-400 mt-0.5">-</span>
+                          <span className="text-gray-700 dark:text-gray-300">{issue.message || fmt(issue.issueType)}</span>
+                          {issue.severity && <span className="text-gray-400 text-[10px]">({issue.severity})</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </InspectSection>
+          )}
+
+          {/* Rich Results section */}
+          {hasRich && (
+            <InspectSection title="Rich Results" icon={<svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>} defaultOpen={result.richResults.verdict === 'FAIL'}>
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400 dark:text-gray-500 text-[11px]">Verdict</span>
+                  {result.richResults.verdict === 'PASS' ? (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Valid</span>
+                  ) : result.richResults.verdict === 'FAIL' ? (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Invalid</span>
+                  ) : (
+                    <span className="text-gray-500 dark:text-gray-400 font-medium">{fmt(result.richResults.verdict)}</span>
+                  )}
+                </div>
+                {result.richResults.detectedItems && result.richResults.detectedItems.length > 0 && (
+                  <div className="space-y-2">
+                    {result.richResults.detectedItems.map((item, i) => (
+                      <div key={i} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2">
+                        <p className="font-medium text-gray-700 dark:text-gray-200">
+                          {item.richResultType || 'Unknown type'}
+                        </p>
+                        {item.items && item.items.length > 0 && (
+                          <ul className="mt-1 space-y-1">
+                            {item.items.map((sub, j) => (
+                              <li key={j} className="text-gray-600 dark:text-gray-300">
+                                {sub.name && <span className="font-medium">{sub.name}</span>}
+                                {sub.issues && sub.issues.length > 0 && (
+                                  <ul className="ml-3 mt-0.5 space-y-0.5">
+                                    {sub.issues.map((iss, k) => (
+                                      <li key={k} className="flex items-start gap-1">
+                                        <span className={iss.severity === 'ERROR' ? 'text-red-400' : 'text-yellow-400'}>-</span>
+                                        <span>{iss.message || fmt(iss.issueType)}</span>
+                                        {iss.severity && <span className="text-gray-400 text-[10px]">({iss.severity})</span>}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </InspectSection>
+          )}
         </div>
       )}
     </div>

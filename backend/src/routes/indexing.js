@@ -134,6 +134,9 @@ router.post('/inspect', async (req, res) => {
       sitemap: index.sitemap,
       userCanonical: index.userCanonical,
       googleCanonical: index.googleCanonical,
+      inspectionResultLink: result.inspectionResultLink || null,
+      mobileUsability: result.mobileUsabilityResult || null,
+      richResults: result.richResultsResult || null,
     });
   } catch (err) {
     const detail = err.response?.data?.error?.message || err.message;
