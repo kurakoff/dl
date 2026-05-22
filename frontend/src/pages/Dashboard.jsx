@@ -144,7 +144,9 @@ export default function Dashboard() {
       const params = { startDate, endDate };
       if (isHourly) params.hourly = 'true';
       const res = await api.get('/api/analytics', { params });
-      setAnalytics(res.data.results || []);
+      const results = res.data.results || [];
+      setAnalytics(results);
+      return results;
     } catch { /* ignore */ }
     finally { setLoadingCharts(false); }
   }, [startDate, endDate, isHourly]);
@@ -930,7 +932,7 @@ export default function Dashboard() {
         <AddSiteModal
           accounts={accounts}
           onClose={() => setShowAddSite(false)}
-          onSuccess={() => { fetchAccounts(); fetchAnalytics(); }}
+          onSuccess={() => { fetchAccounts(); fetchAnalytics().then(sites => { if (sites) runSafetyCheck(sites); }); }}
           onReconnect={handleReconnect}
         />
       )}
