@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
+import { addAccount, removeAccount, switchAccount, removeAllAccounts, getOtherAccounts } from '../utils/accountManager';
 import TrafficChart, { METRIC_COLOR, METRIC_LABEL, ALL_METRICS } from '../components/TrafficChart';
 import DateRangePicker from '../components/DateRangePicker';
 import MetricFilter, { applyMetricFilters } from '../components/MetricFilter';
@@ -126,8 +127,15 @@ export default function Dashboard() {
       api.get('/auth/me'),
       api.get('/api/accounts'),
     ]);
-    setUser(userRes.data);
+    const me = userRes.data;
+    setUser(me);
     setAccounts(accRes.data);
+    // Auto-register current session into multi-account storage
+    const token = localStorage.getItem('auth_token');
+    if (token && me) {
+      addAccount({ userId: me.id, email: me.email, name: me.name, picture: me.picture, token });
+    }
+    sessionStorage.removeItem('pending_account_register');
   }, []);
 
   const fetchDashboards = useCallback(async () => {
@@ -284,7 +292,30 @@ export default function Dashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('auth_token');
+    if (!user) {
+      localStorage.removeItem('auth_token');
+      navigate('/', { replace: true });
+      return;
+    }
+    const action = removeAccount(user.id);
+    if (action === 'switched') {
+      window.location.reload();
+    } else {
+      navigate('/', { replace: true });
+    }
+  };
+
+  const handleSwitchAccount = (userId) => {
+    switchAccount(userId);
+    window.location.reload();
+  };
+
+  const handleAddAnotherAccount = () => {
+    navigate('/?addAccount=true');
+  };
+
+  const handleLogoutAll = () => {
+    removeAllAccounts();
     navigate('/', { replace: true });
   };
 
@@ -742,7 +773,10 @@ export default function Dashboard() {
             onOpenAccounts={() => setShowAccounts(true)}
             onAddSite={() => setShowAddSite(true)}
             onLogout={handleLogout}
-
+            otherAccounts={getOtherAccounts()}
+            onSwitchAccount={handleSwitchAccount}
+            onAddAccount={handleAddAnotherAccount}
+            onLogoutAll={handleLogoutAll}
             darkMode={darkMode}
             onToggleDark={() => setDarkMode(d => !d)}
           />

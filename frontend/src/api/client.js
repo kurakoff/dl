@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { removeAccountByToken } from '../utils/accountManager';
 
 // In production VITE_API_URL=https://dl.memoryai.club (direct calls)
 // In development use empty string → Vite proxy handles routing to backend
@@ -16,8 +17,13 @@ api.interceptors.response.use(
   res => res,
   err => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('auth_token');
-      window.location.href = '/';
+      const expiredToken = err.config?.headers?.Authorization?.replace('Bearer ', '');
+      const action = removeAccountByToken(expiredToken);
+      if (action === 'switched') {
+        window.location.reload();
+      } else {
+        window.location.href = '/';
+      }
     }
     return Promise.reject(err);
   }

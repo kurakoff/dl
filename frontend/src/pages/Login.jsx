@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { addAccount } from '../utils/accountManager';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
 export default function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isAddAccount = searchParams.get('addAccount') === 'true';
   const [mode, setMode] = useState('login'); // login | register | register-verify | forgot | forgot-verify | forgot-newpass
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,7 +19,7 @@ export default function Login() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (localStorage.getItem('auth_token')) {
+    if (!isAddAccount && localStorage.getItem('auth_token')) {
       navigate('/dashboard', { replace: true });
     }
   }, []); // eslint-disable-line
@@ -24,6 +27,20 @@ export default function Login() {
   const resetFields = () => {
     setPassword(''); setConfirmPassword(''); setCode('');
     setNewPassword(''); setConfirmNewPassword(''); setError('');
+  };
+
+  const saveTokenAndGo = async (token) => {
+    localStorage.setItem('auth_token', token);
+    try {
+      const res = await fetch(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const me = await res.json();
+        addAccount({ userId: me.id, email: me.email, name: me.name, picture: me.picture, token });
+      }
+    } catch { /* ignore — Dashboard will register on load */ }
+    navigate('/dashboard', { replace: true });
   };
 
   const handleLogin = async (e) => {
@@ -45,8 +62,7 @@ export default function Login() {
         }
         return;
       }
-      localStorage.setItem('auth_token', data.token);
-      navigate('/dashboard', { replace: true });
+      await saveTokenAndGo(data.token);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -88,8 +104,7 @@ export default function Login() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Verification failed');
-      localStorage.setItem('auth_token', data.token);
-      navigate('/dashboard', { replace: true });
+      await saveTokenAndGo(data.token);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -138,8 +153,7 @@ export default function Login() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Reset failed');
-      localStorage.setItem('auth_token', data.token);
-      navigate('/dashboard', { replace: true });
+      await saveTokenAndGo(data.token);
     } catch (err) {
       setError(err.message);
     } finally {

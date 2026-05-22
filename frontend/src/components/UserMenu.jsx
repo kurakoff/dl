@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 
-export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAccounts, onAddSite, onLogout, onExport, darkMode, onToggleDark }) {
+export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAccounts, onAddSite, onLogout, onExport, darkMode, onToggleDark, otherAccounts = [], onSwitchAccount, onAddAccount, onLogoutAll }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -36,7 +36,7 @@ export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAc
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-64 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+        <div className="absolute right-0 top-full mt-1 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
           {/* User info + dark mode toggle */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
             <div className="min-w-0">
@@ -101,7 +101,46 @@ export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAc
 
           <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
 
-          {/* Logout */}
+          {/* Accounts section */}
+          {otherAccounts.length > 0 && (
+            <>
+              <div className="px-4 py-1.5">
+                <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Accounts</p>
+              </div>
+              {otherAccounts.map(acc => (
+                <button
+                  key={acc.userId}
+                  onClick={() => { setOpen(false); onSwitchAccount(acc.userId); }}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  {acc.picture ? (
+                    <img src={acc.picture} alt="" className="w-6 h-6 rounded-full" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center text-xs font-semibold text-gray-500 dark:text-gray-300">
+                      {acc.email[0].toUpperCase()}
+                    </div>
+                  )}
+                  <span className="truncate">{acc.email}</span>
+                </button>
+              ))}
+              <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+            </>
+          )}
+
+          {/* Add another account */}
+          <button
+            onClick={() => { setOpen(false); onAddAccount(); }}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+          >
+            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+            Add another account
+          </button>
+
+          <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+
+          {/* Sign out current */}
           <button
             onClick={() => { setOpen(false); onLogout(); }}
             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
@@ -112,6 +151,20 @@ export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAc
             </svg>
             Sign out
           </button>
+
+          {/* Sign out of all accounts */}
+          {otherAccounts.length > 0 && (
+            <button
+              onClick={() => { setOpen(false); onLogoutAll(); }}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Sign out of all accounts
+            </button>
+          )}
         </div>
       )}
     </div>

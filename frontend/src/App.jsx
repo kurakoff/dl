@@ -9,6 +9,7 @@ function PrivateRoute({ children }) {
   const urlToken = params.get('token');
   if (urlToken) {
     localStorage.setItem('auth_token', urlToken);
+    sessionStorage.setItem('pending_account_register', 'true');
   }
   return localStorage.getItem('auth_token') ? children : <Navigate to="/" replace />;
 }
