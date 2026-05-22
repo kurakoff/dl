@@ -328,7 +328,22 @@ function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey, can
 // ── Countries ────────────────────────────────────────────────────────────────
 
 function CountriesView({ rows, onRowClick, activeKey }) {
+  const [sortCol, setSortCol] = useState('clicks');
+  const [sortAsc, setSortAsc] = useState(false);
+
+  function toggleSort(col) {
+    if (sortCol === col) setSortAsc(!sortAsc);
+    else { setSortCol(col); setSortAsc(col === 'position'); }
+  }
+
+  const sorted = [...rows].sort((a, b) => {
+    const av = a[sortCol] ?? 0, bv = b[sortCol] ?? 0;
+    return sortAsc ? av - bv : bv - av;
+  });
+
   const max = Math.max(...rows.map(r => r.clicks || 0), 1);
+  const arrow = (col) => sortCol === col ? (sortAsc ? ' ↑' : ' ↓') : '';
+
   return (
     <div className="overflow-auto" style={{ maxHeight: '520px' }}>
       {/* Column headers */}
@@ -337,18 +352,18 @@ function CountriesView({ rows, onRowClick, activeKey }) {
         <span className="text-xs font-medium text-gray-400 w-36 flex-shrink-0">Country</span>
         <div className="flex-1" />
         <div className="flex gap-3 text-xs text-right flex-shrink-0">
-          <span className="font-medium text-gray-400 w-14">Clicks</span>
-          <span className="text-gray-400 w-16 hidden sm:block">Impr.</span>
-          <span className="text-gray-400 w-16 hidden sm:block">CTR</span>
-          <span className="text-gray-400 w-8 hidden sm:block">Pos.</span>
+          <span onClick={() => toggleSort('clicks')} className={`font-medium w-14 cursor-pointer select-none ${sortCol === 'clicks' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400'}`}>Clicks{arrow('clicks')}</span>
+          <span onClick={() => toggleSort('impressions')} className={`w-16 hidden sm:block cursor-pointer select-none ${sortCol === 'impressions' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400'}`}>Impr.{arrow('impressions')}</span>
+          <span onClick={() => toggleSort('ctr')} className={`w-16 hidden sm:block cursor-pointer select-none ${sortCol === 'ctr' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400'}`}>CTR{arrow('ctr')}</span>
+          <span onClick={() => toggleSort('position')} className={`w-8 hidden sm:block cursor-pointer select-none ${sortCol === 'position' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400'}`}>Pos.{arrow('position')}</span>
         </div>
       </div>
       <div className="space-y-2.5">
-      {rows.map((row, i) => {
+      {sorted.map((row, i) => {
         const pct = ((row.clicks || 0) / max) * 100;
         return (
           <div
-            key={i}
+            key={row.key}
             onClick={() => { if (!window.getSelection().toString()) onRowClick?.(row.key); }}
             className={`flex items-center gap-3 pr-1 rounded-lg px-1 py-0.5 ${onRowClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30' : ''} ${activeKey === row.key ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
           >
