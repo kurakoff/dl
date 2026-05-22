@@ -272,7 +272,7 @@ function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey, can
               <td className="px-3 py-2 text-xs text-gray-300 dark:text-gray-600 text-center">{i + 1}</td>
               <td className="px-3 py-2 text-gray-800 dark:text-gray-200 max-w-xs">
                 <span className="block truncate" title={row.key}>
-                  {isPage ? shortPage(row.key) : row.key}
+                  {row.key}
                 </span>
               </td>
               <td className="px-3 py-2 text-right font-medium text-gray-800 dark:text-gray-200">{fmtNum(row.clicks)}</td>
