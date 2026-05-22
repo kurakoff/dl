@@ -266,7 +266,7 @@ function DataTable({ rows, isPage, onRequestIndexing, onRowClick, activeKey, can
           {sorted.map((row, i) => (
             <tr
               key={i}
-              onClick={() => onRowClick?.(row.key)}
+              onClick={() => { if (!window.getSelection().toString()) onRowClick?.(row.key); }}
               className={`border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50/80 dark:hover:bg-gray-700/30 ${onRowClick ? 'cursor-pointer' : ''} ${activeKey === row.key ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
             >
               <td className="px-3 py-2 text-xs text-gray-300 dark:text-gray-600 text-center">{i + 1}</td>
@@ -349,7 +349,7 @@ function CountriesView({ rows, onRowClick, activeKey }) {
         return (
           <div
             key={i}
-            onClick={() => onRowClick?.(row.key)}
+            onClick={() => { if (!window.getSelection().toString()) onRowClick?.(row.key); }}
             className={`flex items-center gap-3 pr-1 rounded-lg px-1 py-0.5 ${onRowClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30' : ''} ${activeKey === row.key ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
           >
             <span className="text-xs text-gray-300 dark:text-gray-600 w-5 text-right flex-shrink-0">{i + 1}</span>
@@ -387,7 +387,7 @@ function DevicesView({ rows, onRowClick, activeKey }) {
         return (
           <div
             key={i}
-            onClick={() => onRowClick?.(row.key)}
+            onClick={() => { if (!window.getSelection().toString()) onRowClick?.(row.key); }}
             className={`rounded-lg p-2 -mx-2 ${onRowClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30' : ''} ${activeKey === row.key ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
           >
             <div className="flex justify-between items-baseline mb-1.5">
@@ -1053,26 +1053,6 @@ export default function SiteDetail() {
 
         {/* Granularity picker + Re-index pushed right */}
         <div className="ml-auto flex items-center gap-3">
-        {isSiteOwner && (
-          <button
-            onClick={handleBatchReindex}
-            disabled={batchIndexing}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition disabled:opacity-50"
-          >
-            {batchIndexing ? (
-              <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-              </svg>
-            ) : (
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            )}
-            Re-index All Pages
-          </button>
-        )}
         {tab === 'Pages' && (
           <div className="flex flex-col items-center">
             <button
