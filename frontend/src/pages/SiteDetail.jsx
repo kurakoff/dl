@@ -19,7 +19,7 @@ const METRIC_COLOR = METRIC_COLOR_LIGHT;
 const METRIC_LABEL = { clicks: 'Clicks', impressions: 'Impressions', ctr: 'CTR', position: 'Position' };
 const ALL_METRICS = ['clicks', 'impressions', 'ctr', 'position'];
 
-const TABS = ['Queries', 'Pages', 'Countries', 'Devices', 'URL inspection'];
+const TABS = ['Queries', 'Pages', 'Countries', 'Devices', 'URL inspection', 'Sitemaps'];
 const DIM  = { Queries: 'query', Pages: 'page', Countries: 'country', Devices: 'device' };
 
 const COUNTRY = {
@@ -420,6 +420,150 @@ const VERDICT_STYLE = {
   FAIL:    { label: 'URL is not on Google', bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', text: 'text-red-700 dark:text-red-400', icon: '✕' },
   VERDICT_UNSPECIFIED: { label: 'Unknown status', bg: 'bg-gray-50 dark:bg-gray-700', border: 'border-gray-200 dark:border-gray-600', text: 'text-gray-600 dark:text-gray-300', icon: '?' },
 };
+
+function SitemapsView({ accountId, siteUrl }) {
+  const [sitemaps, setSitemaps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [feedpath, setFeedpath] = useState('');
+  const [error, setError] = useState('');
+
+  const fetchSitemaps = useCallback(async () => {
+    try {
+      const { data } = await api.get('/api/sitemaps', { params: { accountId, siteUrl } });
+      setSitemaps(data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to load sitemaps');
+    } finally {
+      setLoading(false);
+    }
+  }, [accountId, siteUrl]);
+
+  useEffect(() => { fetchSitemaps(); }, [fetchSitemaps]);
+
+  async function handleSubmit() {
+    if (!feedpath.trim()) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.post('/api/sitemaps/submit', { accountId: Number(accountId), siteUrl, feedpath: feedpath.trim() });
+      setFeedpath('');
+      await fetchSitemaps();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to submit sitemap');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete(path) {
+    try {
+      await api.delete('/api/sitemaps', { params: { accountId, siteUrl, feedpath: path } });
+      setSitemaps(prev => prev.filter(s => s.path !== path));
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete sitemap');
+    }
+  }
+
+  function formatDate(d) {
+    if (!d) return '—';
+    return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function getStatus(sm) {
+    if (sm.errors > 0) return { label: 'Has errors', cls: 'text-red-600 dark:text-red-400' };
+    if (sm.warnings > 0) return { label: 'Has warnings', cls: 'text-amber-600 dark:text-amber-400' };
+    if (sm.isPending) return { label: 'Pending', cls: 'text-blue-600 dark:text-blue-400' };
+    return { label: 'Success', cls: 'text-green-600 dark:text-green-400' };
+  }
+
+  function getUrlCount(sm) {
+    if (!sm.contents || sm.contents.length === 0) return '—';
+    return sm.contents.reduce((sum, c) => sum + (c.submitted || 0), 0).toLocaleString();
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-40 gap-2 text-gray-400 text-sm">
+        <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+        </svg>
+        Loading sitemaps…
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Submit form */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={feedpath}
+          onChange={e => setFeedpath(e.target.value)}
+          placeholder="https://example.com/sitemap.xml"
+          className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+        />
+        <button
+          onClick={handleSubmit}
+          disabled={submitting || !feedpath.trim()}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+          {submitting ? 'Submitting…' : 'Submit'}
+        </button>
+      </div>
+
+      {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {/* Sitemaps table */}
+      {sitemaps.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-10">No sitemaps submitted yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-700">
+                <th className="px-3 py-2 font-medium">Sitemap</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium text-right">URLs</th>
+                <th className="px-3 py-2 font-medium">Submitted</th>
+                <th className="px-3 py-2 font-medium w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sitemaps.map((sm, i) => {
+                const status = getStatus(sm);
+                return (
+                  <tr key={i} className="border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50/80 dark:hover:bg-gray-700/30">
+                    <td className="px-3 py-2 text-gray-800 dark:text-gray-200 max-w-xs">
+                      <span className="block truncate" title={sm.path}>{sm.path}</span>
+                    </td>
+                    <td className={`px-3 py-2 font-medium ${status.cls}`}>{status.label}</td>
+                    <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{getUrlCount(sm)}</td>
+                    <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{formatDate(sm.lastSubmitted)}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        onClick={() => handleDelete(sm.path)}
+                        className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition"
+                        title="Delete sitemap"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UrlInspectionView({ accountId, siteUrl, isSiteOwner, onToast, onCanonicalFound }) {
   const [url, setUrl] = useState('');
@@ -1283,7 +1427,9 @@ export default function SiteDetail() {
 
           {/* Tab content */}
           <div className="px-6 py-4">
-            {tab === 'URL inspection' ? (
+            {tab === 'Sitemaps' ? (
+              <SitemapsView accountId={accountId} siteUrl={siteUrl} />
+            ) : tab === 'URL inspection' ? (
               <UrlInspectionView
                 accountId={accountId}
                 siteUrl={siteUrl}
