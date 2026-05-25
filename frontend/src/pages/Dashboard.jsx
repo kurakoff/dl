@@ -224,17 +224,30 @@ export default function Dashboard() {
       .catch(() => {});
   }, []);
 
-  // Auto-recheck when analytics are loaded and cache is stale/empty
+  // Auto-recheck: on load if stale, and whenever new (unchecked) sites appear
   const safetyAutoChecked = useRef(false);
   useEffect(() => {
-    if (safetyAutoChecked.current || analytics.length === 0) return;
+    if (analytics.length === 0) return;
     const SIX_HOURS = 6 * 60 * 60 * 1000;
     const now = Date.now();
-    const values = Object.values(safetyStatus);
-    const hasStale = values.length === 0 || values.some(v => !v.checkedAt || (now - new Date(v.checkedAt).getTime()) > SIX_HOURS);
-    if (hasStale) {
-      safetyAutoChecked.current = true;
-      runSafetyCheck(analytics);
+
+    // Find sites that have no cached status at all
+    const unchecked = analytics.filter(s => !safetyStatus[`${s.accountId}:${s.siteUrl}`]);
+
+    if (unchecked.length > 0) {
+      // New sites appeared — check only them
+      runSafetyCheck(unchecked);
+      return;
+    }
+
+    // Initial full check if cache is stale
+    if (!safetyAutoChecked.current) {
+      const values = Object.values(safetyStatus);
+      const hasStale = values.length === 0 || values.some(v => !v.checkedAt || (now - new Date(v.checkedAt).getTime()) > SIX_HOURS);
+      if (hasStale) {
+        safetyAutoChecked.current = true;
+        runSafetyCheck(analytics);
+      }
     }
   }, [analytics, safetyStatus, runSafetyCheck]);
 
