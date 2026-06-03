@@ -7,6 +7,7 @@ import DateRangePicker from '../components/DateRangePicker';
 import MetricFilter, { applyMetricFilters } from '../components/MetricFilter';
 import TrendFilter, { applyTrendFilter } from '../components/TrendFilter';
 import QueryFilter from '../components/QueryFilter';
+import CountryFilter from '../components/CountryFilter';
 import UserMenu from '../components/UserMenu';
 import SettingsModal from '../components/SettingsModal';
 import AccountsModal from '../components/AccountsModal';
@@ -91,6 +92,7 @@ export default function Dashboard() {
   const [metricFilters,     setMetricFilters]     = useState([]);
   const [trendFilter,       setTrendFilter]       = useState({ trends: [], metric: 'clicks' });
   const [queryFilterMatches, setQueryFilterMatches] = useState(null);
+  const [geoFilter,          setGeoFilter]          = useState([]);
   const [sidebarCollapsed,  setSidebarCollapsed]  = useState(false);
   const [granularity,       setGranularity]       = useState('day');
   const [inviteUrl,         setInviteUrl]         = useState('');
@@ -154,13 +156,14 @@ export default function Dashboard() {
     try {
       const params = { startDate, endDate };
       if (isHourly) params.hourly = 'true';
+      if (geoFilter.length) params.countries = geoFilter.join(',');
       const res = await api.get('/api/analytics', { params });
       const results = res.data.results || [];
       setAnalytics(results);
       return results;
     } catch { /* ignore */ }
     finally { setLoadingCharts(false); }
-  }, [startDate, endDate, isHourly]);
+  }, [startDate, endDate, isHourly, geoFilter]);
 
   useEffect(() => { fetchAccounts(); fetchDashboards(); }, [fetchAccounts, fetchDashboards]);
   useEffect(() => {
@@ -773,6 +776,7 @@ export default function Dashboard() {
             <MetricFilter filters={metricFilters} onChange={setMetricFilters} />
             <TrendFilter value={trendFilter} onChange={setTrendFilter} />
             <QueryFilter startDate={startDate} endDate={endDate} sites={displayedAnalytics} onFilterChange={setQueryFilterMatches} />
+            <CountryFilter value={geoFilter} onChange={setGeoFilter} />
 
             {/* Threats filter toggle */}
             {threatCount > 0 && (

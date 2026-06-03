@@ -13,6 +13,7 @@ router.get('/', async (req, res) => {
   const end   = req.query.endDate   || new Date().toISOString().slice(0, 10);
   const start = req.query.startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10);
   const hourly = req.query.hourly === 'true';
+  const countries = req.query.countries ? req.query.countries.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
 
   const db       = getDb();
   const accounts = db.prepare(
@@ -52,6 +53,11 @@ router.get('/', async (req, res) => {
             rowLimit:   hourly ? 2500 : 500,
           };
         if (hourly) requestBody.dataState = 'hourly_all';
+        if (countries.length === 1) {
+          requestBody.dimensionFilterGroups = [{ filters: [{ dimension: 'country', operator: 'equals', expression: countries[0] }] }];
+        } else if (countries.length > 1) {
+          requestBody.dimensionFilterGroups = [{ filters: [{ dimension: 'country', operator: 'includingRegex', expression: countries.join('|') }] }];
+        }
 
         const { data } = await sc.searchanalytics.query({
           siteUrl,
