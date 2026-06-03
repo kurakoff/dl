@@ -92,6 +92,7 @@ export default function Dashboard() {
   const [metricFilters,     setMetricFilters]     = useState([]);
   const [trendFilter,       setTrendFilter]       = useState({ trends: [], metric: 'clicks' });
   const [queryFilterMatches, setQueryFilterMatches] = useState(null);
+  const [queryKeyword,       setQueryKeyword]       = useState(null);
   const [geoFilter,          setGeoFilter]          = useState([]);
   const [sidebarCollapsed,  setSidebarCollapsed]  = useState(false);
   const [granularity,       setGranularity]       = useState('day');
@@ -157,13 +158,14 @@ export default function Dashboard() {
       const params = { startDate, endDate };
       if (isHourly) params.hourly = 'true';
       if (geoFilter.length) params.countries = geoFilter.join(',');
+      if (queryKeyword) params.query = queryKeyword;
       const res = await api.get('/api/analytics', { params });
       const results = res.data.results || [];
       setAnalytics(results);
       return results;
     } catch { /* ignore */ }
     finally { setLoadingCharts(false); }
-  }, [startDate, endDate, isHourly, geoFilter]);
+  }, [startDate, endDate, isHourly, geoFilter, queryKeyword]);
 
   useEffect(() => { fetchAccounts(); fetchDashboards(); }, [fetchAccounts, fetchDashboards]);
   useEffect(() => {
@@ -775,7 +777,7 @@ export default function Dashboard() {
 
             <MetricFilter filters={metricFilters} onChange={setMetricFilters} />
             <TrendFilter value={trendFilter} onChange={setTrendFilter} />
-            <QueryFilter startDate={startDate} endDate={endDate} sites={displayedAnalytics} onFilterChange={setQueryFilterMatches} />
+            <QueryFilter startDate={startDate} endDate={endDate} sites={displayedAnalytics} onFilterChange={setQueryFilterMatches} onKeywordChange={setQueryKeyword} />
             <CountryFilter value={geoFilter} onChange={setGeoFilter} />
 
             {/* Threats filter toggle */}

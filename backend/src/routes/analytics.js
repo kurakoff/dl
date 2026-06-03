@@ -14,6 +14,7 @@ router.get('/', async (req, res) => {
   const start = req.query.startDate || new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10);
   const hourly = req.query.hourly === 'true';
   const countries = req.query.countries ? req.query.countries.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
+  const queryFilter = req.query.query ? req.query.query.trim() : '';
 
   const db       = getDb();
   const accounts = db.prepare(
@@ -53,10 +54,17 @@ router.get('/', async (req, res) => {
             rowLimit:   hourly ? 2500 : 500,
           };
         if (hourly) requestBody.dataState = 'hourly_all';
+        const filters = [];
         if (countries.length === 1) {
-          requestBody.dimensionFilterGroups = [{ filters: [{ dimension: 'country', operator: 'equals', expression: countries[0] }] }];
+          filters.push({ dimension: 'country', operator: 'equals', expression: countries[0] });
         } else if (countries.length > 1) {
-          requestBody.dimensionFilterGroups = [{ filters: [{ dimension: 'country', operator: 'includingRegex', expression: countries.join('|') }] }];
+          filters.push({ dimension: 'country', operator: 'includingRegex', expression: countries.join('|') });
+        }
+        if (queryFilter) {
+          filters.push({ dimension: 'query', operator: 'contains', expression: queryFilter });
+        }
+        if (filters.length) {
+          requestBody.dimensionFilterGroups = [{ filters }];
         }
 
         const { data } = await sc.searchanalytics.query({

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import api from '../api/client';
 
-export default function QueryFilter({ startDate, endDate, sites, onFilterChange }) {
+export default function QueryFilter({ startDate, endDate, sites, onFilterChange, onKeywordChange }) {
   const [keyword, setKeyword] = useState('');
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(false);
@@ -21,6 +21,7 @@ export default function QueryFilter({ startDate, endDate, sites, onFilterChange 
         (res.data.matches || []).map(m => `${m.accountId}:${m.siteUrl}`)
       );
       onFilterChange(matchSet);
+      if (onKeywordChange) onKeywordChange(trimmed);
       setActive(true);
     } catch {
       onFilterChange(null);
@@ -33,6 +34,7 @@ export default function QueryFilter({ startDate, endDate, sites, onFilterChange 
     setKeyword('');
     setActive(false);
     onFilterChange(null);
+    if (onKeywordChange) onKeywordChange(null);
   };
 
   const handleKeyDown = (e) => {
