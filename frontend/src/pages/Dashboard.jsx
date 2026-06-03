@@ -277,7 +277,7 @@ export default function Dashboard() {
       setShowForm(false);
       // Auto-open site picker so user can immediately add sites
       setTimeout(() => setShowSitePicker(true), 100);
-    } catch { showToast('Error saving dashboard'); }
+    } catch (err) { showToast(err.response?.data?.error || 'Error saving dashboard'); }
   };
 
   const handleSitePickerSave = async (dashboardId, name, sites) => {

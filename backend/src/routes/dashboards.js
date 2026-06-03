@@ -37,6 +37,9 @@ router.post('/', (req, res) => {
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
 
   const db = getDb();
+  const dup = db.prepare('SELECT id FROM dashboards WHERE user_id = ? AND LOWER(name) = LOWER(?)').get(req.userId, name.trim());
+  if (dup) return res.status(409).json({ error: 'Dashboard with this name already exists' });
+
   const { lastInsertRowid } = db.prepare(
     'INSERT INTO dashboards (user_id, name) VALUES (?, ?)'
   ).run(req.userId, name.trim());
@@ -60,6 +63,8 @@ router.put('/:id', (req, res) => {
   if (!row) return res.status(404).json({ error: 'Not found' });
 
   if (name?.trim()) {
+    const dup = db.prepare('SELECT id FROM dashboards WHERE user_id = ? AND LOWER(name) = LOWER(?) AND id != ?').get(req.userId, name.trim(), row.id);
+    if (dup) return res.status(409).json({ error: 'Dashboard with this name already exists' });
     db.prepare('UPDATE dashboards SET name = ? WHERE id = ?').run(name.trim(), row.id);
   }
 
