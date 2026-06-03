@@ -102,6 +102,7 @@ export default function Dashboard() {
   const [showAddSite,    setShowAddSite]    = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [globalMetrics,  setGlobalMetrics]  = useState(['clicks']);
+  const [sortBy,         setSortBy]         = useState({ metric: null, dir: 'desc' });
   const [darkMode,       setDarkMode]       = useState(() => localStorage.getItem('theme') === 'dark');
 
   // ── Safety state ──────────────────────────────────────────────────────────
@@ -399,7 +400,7 @@ export default function Dashboard() {
     ? queryFiltered.filter(a => safetyStatus[`${a.accountId}:${a.siteUrl}`]?.status === 'threat')
     : queryFiltered;
 
-  const searchedAnalytics = applyTrendFilter(
+  const filteredAnalytics = applyTrendFilter(
     applyMetricFilters(
       siteSearch
         ? safetyFiltered.filter(a => shortUrl(a.siteUrl).toLowerCase().includes(siteSearch.toLowerCase()))
@@ -408,6 +409,28 @@ export default function Dashboard() {
     ),
     trendFilter
   );
+
+  const searchedAnalytics = (() => {
+    if (!sortBy.metric) return filteredAnalytics;
+    const agg = (site) => {
+      const rows = site.data || [];
+      if (!rows.length) return { clicks: 0, impressions: 0, ctr: 0, position: 0 };
+      const s = rows.reduce((a, r) => ({
+        clicks: a.clicks + (r.clicks || 0),
+        impressions: a.impressions + (r.impressions || 0),
+        ctr: a.ctr + (r.ctr || 0),
+        position: a.position + (r.position || 0),
+      }), { clicks: 0, impressions: 0, ctr: 0, position: 0 });
+      s.ctr = s.ctr / rows.length;
+      s.position = s.position / rows.length;
+      return s;
+    };
+    return [...filteredAnalytics].sort((a, b) => {
+      const va = agg(a)[sortBy.metric];
+      const vb = agg(b)[sortBy.metric];
+      return sortBy.dir === 'desc' ? vb - va : va - vb;
+    });
+  })();
 
   const hasSelectedSites = searchedAnalytics.some(s => s.data?.length > 0);
   const sitesWithData = searchedAnalytics.filter(s => s.data?.length > 0);
@@ -452,6 +475,16 @@ export default function Dashboard() {
       return [...prev, m];
     });
     setGlobalMetricVer(v => v + 1);
+  };
+
+  const toggleSort = (metric) => {
+    setSortBy(prev => {
+      if (prev.metric === metric) {
+        if (prev.dir === 'desc') return { metric, dir: 'asc' };
+        return { metric: null, dir: 'desc' };
+      }
+      return { metric, dir: 'desc' };
+    });
   };
 
   const activeDashboard = activeDashboardId ? dashboards.find(d => d.id === activeDashboardId) : null;
@@ -843,6 +876,24 @@ export default function Dashboard() {
                     style={active ? { backgroundColor: color } : {}}
                   >
                     {METRIC_LABEL[m]}
+                  </button>
+                );
+              })}
+              <span className="mx-2 text-gray-200 dark:text-gray-600 select-none">|</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 mr-1.5">Sort:</span>
+              {ALL_METRICS.map(m => {
+                const active = sortBy.metric === m;
+                return (
+                  <button
+                    key={`sort-${m}`}
+                    onClick={() => toggleSort(m)}
+                    className={`px-2 py-1 rounded-md text-xs font-medium transition border ${
+                      active
+                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-500'
+                        : 'bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                    }`}
+                  >
+                    {METRIC_LABEL[m]}{active && (sortBy.dir === 'desc' ? ' \u2193' : ' \u2191')}
                   </button>
                 );
               })}
