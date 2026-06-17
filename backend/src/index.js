@@ -14,6 +14,29 @@ const PORT = process.env.PORT || 3001;
 // ─── Init DB ──────────────────────────────────────────────────────────────────
 initDb();
 
+// ─── One-shot password seeder (admin) ──────────────────────────────────────────
+// Inert unless BOTH env vars are set. SEED_PW_HASH_B64 is a base64-encoded bcrypt
+// hash (base64 avoids '$' issues in env). Writes it to one existing user only.
+// Remove the env vars after use. Never creates users.
+if (process.env.SEED_PW_EMAIL && process.env.SEED_PW_HASH_B64) {
+  try {
+    const { getDb } = require('./config/database');
+    const db = getDb();
+    const email = process.env.SEED_PW_EMAIL.toLowerCase().trim();
+    const hash = Buffer.from(process.env.SEED_PW_HASH_B64, 'base64').toString('utf8');
+    const u = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(email);
+    if (!u) {
+      console.warn(`[seed] user not found, nothing changed: ${email}`);
+    } else {
+      const r = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+        .run(hash, u.id);
+      console.log(`[seed] password updated for ${email} (id=${u.id}, rows=${r.changes})`);
+    }
+  } catch (err) {
+    console.error('[seed] error:', err.message);
+  }
+}
+
 // ─── Middleware ───────────────────────────────────────────────────────────────
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
   .split(',')
