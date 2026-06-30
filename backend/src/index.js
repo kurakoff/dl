@@ -59,7 +59,8 @@ app.get('/admin/db-export/migrate-2026-04', (req, res) => {
 });
 
 // Temporary: read-only account diagnostics, guarded by DIAG_KEY env. Remove after use.
-app.get('/admin/diag', (req, res) => {
+// Mounted under /api/ so the frontend nginx proxy forwards it to the backend.
+app.get('/api/diag', (req, res) => {
   if (!process.env.DIAG_KEY || req.query.key !== process.env.DIAG_KEY) {
     return res.status(404).end();
   }
