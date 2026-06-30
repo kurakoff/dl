@@ -58,53 +58,6 @@ app.get('/admin/db-export/migrate-2026-04', (req, res) => {
   res.send(data);
 });
 
-// Temporary: read-only account diagnostics, guarded by DIAG_KEY env. Remove after use.
-// Mounted under /api/ so the frontend nginx proxy forwards it to the backend.
-app.get('/api/diag', (req, res) => {
-  if (!process.env.DIAG_KEY || req.query.key !== process.env.DIAG_KEY) {
-    return res.status(404).end();
-  }
-  try {
-    const { getDb } = require('./config/database');
-    const db = getDb();
-    const emails = (req.query.emails
-      ? String(req.query.emails).split(',')
-      : ['linkbuilding.learn@gmail.com', 'saloncascabel@gmail.com', 'unctadcompalorg@gmail.com']
-    ).map(e => e.trim().toLowerCase()).filter(Boolean);
-    const ph = emails.map(() => '?').join(',');
-
-    const users = db.prepare(
-      `SELECT id, email, google_id, created_at, (password_hash IS NOT NULL) AS has_password
-       FROM users WHERE lower(email) IN (${ph})`
-    ).all(...emails);
-
-    const accounts = db.prepare(
-      `SELECT ca.id, ca.user_id, ca.email, ca.google_id, ca.created_at, ca.has_indexing_scope,
-              u.email AS owner_email,
-              (SELECT COUNT(*) FROM selected_sites s WHERE s.connected_account_id = ca.id) AS sites_count
-       FROM connected_accounts ca
-       LEFT JOIN users u ON u.id = ca.user_id
-       WHERE lower(ca.email) IN (${ph})`
-    ).all(...emails);
-
-    const userIds = [...new Set([...users.map(u => u.id), ...accounts.map(a => a.user_id)])];
-    const grouping = userIds.map(uid => ({
-      user_id: uid,
-      owner_email: (db.prepare('SELECT email FROM users WHERE id = ?').get(uid) || {}).email,
-      invite_token: (db.prepare('SELECT token FROM invite_tokens WHERE user_id = ?').get(uid) || {}).token || null,
-      connected: db.prepare(
-        `SELECT email, google_id,
-                (SELECT COUNT(*) FROM selected_sites s WHERE s.connected_account_id = connected_accounts.id) AS sites
-         FROM connected_accounts WHERE user_id = ?`
-      ).all(uid),
-    }));
-
-    res.json({ emails, users, accounts, grouping });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 app.get('/health', (_req, res) => {
   try {
     const { getDb } = require('./config/database');
