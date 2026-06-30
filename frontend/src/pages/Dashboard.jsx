@@ -172,6 +172,24 @@ export default function Dashboard() {
     api.post('/auth/invite-token').then(r => setInviteUrl(r.data.url)).catch(() => {});
   }, []);
 
+  // Re-fetch accounts when the tab regains focus — e.g. after connecting an
+  // account via the invite/add-account flow in another tab (which doesn't
+  // notify this tab). Keeps the account list in sync without a manual reload.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') {
+        fetchAccounts();
+        fetchDashboards();
+      }
+    };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [fetchAccounts, fetchDashboards]);
+
   // Fetch which sites have notes (for indicator)
   const fetchNotesList = useCallback(() => {
     api.get('/api/notes/list')
