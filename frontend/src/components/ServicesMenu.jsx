@@ -4,7 +4,6 @@ const SERVICES = [
   { name: 'GSC Dashboard',      url: 'https://gsc.y2a.ru' },
   { name: 'Traffic Checker',    url: 'https://bulk-traffic.y2a.ru/' },
   { name: 'Schematic Detector', url: 'https://schematic-detector.y2a.ru/' },
-  { name: 'PBN Maker',          url: 'https://pbn.zavod.guru/' },
   { name: 'Indexing',           url: 'https://indexing-dashboard.y2a.ru/' },
   { name: 'Abuz Detector',      url: 'https://abuz.y2a.ru/' },
   { name: 'YM Reports',         url: 'https://metrika-dashboard.y2a.ru/' },
