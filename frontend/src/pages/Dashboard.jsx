@@ -9,6 +9,7 @@ import TrendFilter, { applyTrendFilter } from '../components/TrendFilter';
 import QueryFilter from '../components/QueryFilter';
 import CountryFilter from '../components/CountryFilter';
 import UserMenu from '../components/UserMenu';
+import ServicesMenu from '../components/ServicesMenu';
 import SettingsModal from '../components/SettingsModal';
 import AccountsModal from '../components/AccountsModal';
 import SitePickerModal from '../components/SitePickerModal';
@@ -851,7 +852,9 @@ export default function Dashboard() {
 
           </div>
 
-          {/* UserMenu on the right */}
+          {/* Services switcher + UserMenu on the right */}
+          <div className="flex items-center gap-1">
+          <ServicesMenu />
           <UserMenu
             user={user}
             accountsCount={accounts.length}
@@ -866,6 +869,7 @@ export default function Dashboard() {
             darkMode={darkMode}
             onToggleDark={() => setDarkMode(d => !d)}
           />
+          </div>
         </div>
 
         {/* ── Safety banner ───────────────────────────────────────────────── */}
