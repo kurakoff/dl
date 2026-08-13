@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 
 const SERVICES = [
   { name: 'GSC Dashboard',      url: 'https://gsc.y2a.ru' },
-  { name: 'Traffic Checker',    url: 'https://bulk-traffic.y2a.ru/' },
+  { name: 'Puzomerki',          url: 'https://puzomerki.y2a.ru/' },
   { name: 'Schematic Detector', url: 'https://schematic-detector.y2a.ru/' },
   { name: 'Indexing',           url: 'https://indexing-dashboard.y2a.ru/' },
   { name: 'Abuz Detector',      url: 'https://abuz.y2a.ru/' },
