@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
+import ChangePasswordModal from './ChangePasswordModal';
 
 export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAccounts, onAddSite, onLogout, onExport, darkMode, onToggleDark, otherAccounts = [], onSwitchAccount, onAddAccount, onLogoutAll }) {
   const [open, setOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -99,6 +101,18 @@ export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAc
             Add Site to GSC
           </button>
 
+          {/* Change password */}
+          <button
+            onClick={() => { setOpen(false); setShowPassword(true); }}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+          >
+            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+            Change password
+          </button>
+
           <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
 
           {/* Accounts section */}
@@ -166,6 +180,10 @@ export default function UserMenu({ user, accountsCount, onOpenSettings, onOpenAc
             </button>
           )}
         </div>
+      )}
+
+      {showPassword && (
+        <ChangePasswordModal email={user.email} onClose={() => setShowPassword(false)} />
       )}
     </div>
   );
