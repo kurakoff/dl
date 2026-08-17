@@ -331,4 +331,25 @@ router.get('/me', requireAuth, (req, res) => {
   res.json(user);
 });
 
+// Список пользователей. Ролей в сервисе нет, поэтому доступ — обычная
+// авторизация: залогинен, значит видишь список (как в Schematic Detector).
+router.get('/users', requireAuth, (req, res) => {
+  const users = getDb()
+    .prepare(
+      `SELECT id, email, name,
+              (google_id IS NOT NULL) as hasGoogle,
+              (password_hash IS NOT NULL) as hasPassword,
+              created_at
+       FROM users ORDER BY created_at`
+    )
+    .all();
+  res.json({
+    users: users.map(u => ({
+      ...u,
+      hasGoogle: !!u.hasGoogle,
+      hasPassword: !!u.hasPassword,
+    })),
+  });
+});
+
 module.exports = router;
