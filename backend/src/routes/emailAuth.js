@@ -246,4 +246,36 @@ router.post('/change-password/verify', requireAuth, (req, res) => {
   }
 });
 
+// POST /auth/email/admin-create — завести аккаунт с паролем без PIN.
+// Временная административная ручка для массового заведения пользователей.
+// Строго создающая: если email уже есть, отдаёт 409 и НИЧЕГО не меняет —
+// пароль существующего пользователя перезаписать нельзя.
+router.post('/admin-create', requireAuth, (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'Valid email required' });
+    if (!password || password.length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+    }
+
+    const db = getDb();
+    const normalizedEmail = String(email).toLowerCase();
+
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
+    if (existing) {
+      return res.status(409).json({ error: 'User already exists', id: existing.id });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
+    const result = db
+      .prepare('INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)')
+      .run(normalizedEmail, normalizedEmail.split('@')[0], passwordHash);
+
+    res.json({ ok: true, id: result.lastInsertRowid, email: normalizedEmail });
+  } catch (err) {
+    console.error('admin-create error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
