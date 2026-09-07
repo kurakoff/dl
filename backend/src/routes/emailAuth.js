@@ -10,10 +10,6 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 const SALT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 8;
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'kurakoff19@gmail.com')
-  .split(',')
-  .map(e => e.trim().toLowerCase())
-  .filter(Boolean);
 
 function isValidEmail(email) {
   return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -278,37 +274,6 @@ router.post('/admin-create', requireAuth, (req, res) => {
     res.json({ ok: true, id: result.lastInsertRowid, email: normalizedEmail });
   } catch (err) {
     console.error('admin-create error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /auth/email/admin-set-password — задать пароль существующему пользователю без PIN.
-// Временная административная ручка. Доступна только владельцу (ADMIN_EMAILS),
-// иначе любой авторизованный смог бы перехватить чужой аккаунт.
-router.post('/admin-set-password', requireAuth, (req, res) => {
-  try {
-    const db = getDb();
-    const admin = db.prepare('SELECT email FROM users WHERE id = ?').get(req.userId);
-    if (!admin || !ADMIN_EMAILS.includes(admin.email.toLowerCase())) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    const { email, password } = req.body;
-    if (!isValidEmail(email)) return res.status(400).json({ error: 'Valid email required' });
-    if (!password || password.length < MIN_PASSWORD_LENGTH) {
-      return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
-    }
-
-    const normalizedEmail = String(email).toLowerCase();
-    const user = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
-
-    res.json({ ok: true, id: user.id, email: normalizedEmail });
-  } catch (err) {
-    console.error('admin-set-password error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
