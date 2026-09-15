@@ -4,6 +4,7 @@ import api from '../api/client';
 import { addAccount, removeAccount, switchAccount, removeAllAccounts, getOtherAccounts } from '../utils/accountManager';
 import TrafficChart, { METRIC_COLOR, METRIC_LABEL, ALL_METRICS } from '../components/TrafficChart';
 import DateRangePicker from '../components/DateRangePicker';
+import useDateRangeParams from '../utils/useDateRangeParams';
 import MetricFilter, { applyMetricFilters } from '../components/MetricFilter';
 import TrendFilter, { applyTrendFilter } from '../components/TrendFilter';
 import QueryFilter from '../components/QueryFilter';
@@ -18,10 +19,6 @@ import SafetyAlertModal from '../components/SafetyAlertModal';
 import AddSiteModal from '../components/AddSiteModal';
 import LoginModal from '../components/LoginModal';
 import ConfirmModal from '../components/ConfirmModal';
-
-function daysAgo(n) {
-  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
-}
 
 function shortUrl(url) {
   return url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').replace('sc-domain:', '');
@@ -78,8 +75,7 @@ export default function Dashboard() {
   const [user,          setUser]          = useState(null);
   const [accounts,      setAccounts]      = useState([]);
   const [analytics,     setAnalytics]     = useState([]);
-  const [startDate,     setStartDate]     = useState(daysAgo(28));
-  const [endDate,       setEndDate]       = useState(daysAgo(0));
+  const [startDate, endDate, setDateRange] = useDateRangeParams(28);
   const [loadingCharts, setLoadingCharts] = useState(false);
   const [toast,         setToast]         = useState('');
   const [freshness,     setFreshness]     = useState({}); // { siteUrl: lastHourlyTimestamp }
@@ -155,7 +151,12 @@ export default function Dashboard() {
   const daysDiff = Math.round((new Date(endDate) - new Date(startDate)) / 86_400_000);
   const isHourly = daysDiff <= 1;
 
+  // Only the latest request may update the charts: a slow response for an
+  // older range (e.g. 28 days) must not overwrite a newer one (e.g. 24 hours).
+  const analyticsRequestId = useRef(0);
   const fetchAnalytics = useCallback(async () => {
+    const requestId = ++analyticsRequestId.current;
+    const isLatest = () => requestId === analyticsRequestId.current;
     setLoadingCharts(true);
     try {
       const params = { startDate, endDate };
@@ -163,11 +164,17 @@ export default function Dashboard() {
       if (geoFilter.length) params.countries = geoFilter.join(',');
       if (queryKeyword) params.query = queryKeyword;
       const res = await api.get('/api/analytics', { params });
+      if (!isLatest()) return;
       const results = res.data.results || [];
       setAnalytics(results);
       return results;
-    } catch { /* ignore */ }
-    finally { setLoadingCharts(false); }
+    } catch (err) {
+      if (!isLatest()) return;
+      // Don't keep showing data for the previous range as if it were current
+      setAnalytics([]);
+      showToast(err.response?.data?.error || 'Failed to load analytics');
+    }
+    finally { if (isLatest()) setLoadingCharts(false); }
   }, [startDate, endDate, isHourly, geoFilter, queryKeyword]);
 
   useEffect(() => { fetchAccounts(); fetchDashboards(); }, [fetchAccounts, fetchDashboards]);
@@ -763,7 +770,7 @@ export default function Dashboard() {
             <DateRangePicker
               startDate={startDate}
               endDate={endDate}
-              onChange={(s, e) => { setStartDate(s); setEndDate(e); }}
+              onChange={(s, e) => setDateRange(s, e)}
             />
 
             {/* Granularity picker (hidden for hourly) */}

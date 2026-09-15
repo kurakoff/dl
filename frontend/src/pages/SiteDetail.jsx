@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import api from '../api/client';
 import DateRangePicker from '../components/DateRangePicker';
+import useDateRangeParams from '../utils/useDateRangeParams';
 import { COUNTRY, countryName } from '../utils/countries';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -24,10 +25,6 @@ const TABS = ['Queries', 'Pages', 'Countries', 'Devices', 'URL inspection', 'Sit
 const DIM  = { Queries: 'query', Pages: 'page', Countries: 'country', Devices: 'device' };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function daysAgo(n) {
-  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
-}
 
 function shortUrl(url) {
   return url.replace(/^sc-domain:/, '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
@@ -912,8 +909,7 @@ export default function SiteDetail() {
   const [darkMode] = useState(() => localStorage.getItem('theme') === 'dark');
 
   // Date range
-  const [startDate, setStartDate] = useState(daysAgo(28));
-  const [endDate, setEndDate]     = useState(daysAgo(0));
+  const [startDate, endDate, setDateRange] = useDateRangeParams(28);
   const [granularity, setGranularity] = useState('day');
 
   // Traffic data
@@ -1367,7 +1363,7 @@ export default function SiteDetail() {
         <DateRangePicker
           startDate={startDate}
           endDate={endDate}
-          onChange={(s, e) => { setStartDate(s); setEndDate(e); }}
+          onChange={(s, e) => setDateRange(s, e)}
         />
 
         {updatedAgo && !loadingChart && (
