@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -142,7 +142,46 @@ function MultiTooltip({ active, payload, label, granularity }) {
   );
 }
 
-export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange, safetyStatus, duplicateIn, onRetry }) {
+// Charts are only mounted for cards near the viewport: with thousands of sites
+// on a dashboard, rendering every chart made the page sluggish. One shared
+// IntersectionObserver per scroll container.
+const nearCallbacks = new Map(); // element -> (isNear) => void
+const nearObservers = new Map(); // scroll root (null = viewport) -> observer
+
+function scrollParent(el) {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const { overflowY } = getComputedStyle(p);
+    if (overflowY === 'auto' || overflowY === 'scroll') return p;
+  }
+  return null;
+}
+
+function useNearViewport(ref) {
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') { setNear(true); return; }
+    const root = scrollParent(el);
+    let observer = nearObservers.get(root);
+    if (!observer) {
+      observer = new IntersectionObserver((entries) => {
+        for (const e of entries) nearCallbacks.get(e.target)?.(e.isIntersecting);
+      }, { root, rootMargin: '800px 0px' });
+      nearObservers.set(root, observer);
+    }
+    nearCallbacks.set(el, setNear);
+    observer.observe(el);
+    return () => { observer.unobserve(el); nearCallbacks.delete(el); };
+  }, [ref]);
+  return near;
+}
+
+export default memo(TrafficChart);
+
+function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange, safetyStatus, duplicateIn, onRetry }) {
+  const cardRef = useRef(null);
+  const nearViewport = useNearViewport(cardRef);
 
   // Local metrics state — defaults to globalMetrics, resets when global changes
   const [localMetrics, setLocalMetrics] = useState(globalMetrics || ['clicks']);
@@ -203,7 +242,7 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
   const updatedAgo = timeAgo(freshTimestamp);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+    <div ref={cardRef} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
       {/* Site header */}
       <div className="px-4 pt-3 pb-0 border-b border-gray-100 dark:border-gray-700">
         <div className="flex items-center justify-between mb-2">
@@ -329,8 +368,11 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
         </div>
       )}
 
+      {/* Placeholder with the chart's height while the card is far off-screen */}
+      {hasData && !nearViewport && <div style={{ height: 224 }} />}
+
       {/* Multi-metric chart */}
-      {hasData && (
+      {hasData && nearViewport && (
         <div className="px-2 pt-4 pb-2">
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={rows} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>

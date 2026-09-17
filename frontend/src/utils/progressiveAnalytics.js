@@ -5,11 +5,28 @@ import api from '../api/client';
 // are retried in later rounds — a failure is never shown as "no data".
 
 const BATCH_SIZE = 25;
-const PARALLEL   = 3;
+const PARALLEL   = 6;
 const MAX_ROUNDS = 6;
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 export const siteKey = (s) => `${s.accountId}:${s.siteUrl}`;
+
+// Round-robin sites across accounts. The GSC quota and the backend throttle are
+// per Google account, so batches mixing many accounts run in parallel instead
+// of queueing behind one account's limit.
+function interleaveByAccount(sites) {
+  const byAccount = new Map();
+  for (const s of sites) {
+    if (!byAccount.has(s.accountId)) byAccount.set(s.accountId, []);
+    byAccount.get(s.accountId).push(s);
+  }
+  const lists = [...byAccount.values()];
+  const out = [];
+  for (let i = 0; out.length < sites.length; i++) {
+    for (const list of lists) if (i < list.length) out.push(list[i]);
+  }
+  return out;
+}
 
 /**
  * @param sites        [{ accountId, siteUrl }]
@@ -27,7 +44,7 @@ export async function loadSeriesProgressive({ sites, params, onResults, isCancel
     if (isCancelled()) return;
 
     const lastRound = round === MAX_ROUNDS;
-    const queue = [...pending];
+    const queue = interleaveByAccount(pending);
     const retry = [];
 
     const worker = async () => {

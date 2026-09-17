@@ -162,16 +162,27 @@ export default function Dashboard() {
   const priorityRef = useRef(null);
   const loadedParamsKey = useRef(null);
 
-  const mergeSeries = useCallback((loaded, failed) => {
-    if (!loaded.length && !failed.length) return;
-    const updates = new Map();
-    for (const r of loaded) updates.set(siteKey(r), { data: r.data, loading: false, error: undefined });
-    for (const r of failed) updates.set(siteKey(r), { data: [], loading: false, error: r.error });
+  // Batch results are buffered and applied at most every 400 ms: re-rendering
+  // thousands of cards for every small batch made the page sluggish.
+  const pendingSeries = useRef(new Map());
+  const flushTimer = useRef(null);
+  const flushSeries = useCallback(() => {
+    flushTimer.current = null;
+    const updates = pendingSeries.current;
+    if (!updates.size) return;
+    pendingSeries.current = new Map();
     setAnalytics(prev => prev.map(a => {
       const u = updates.get(siteKey(a));
       return u ? { ...a, ...u } : a;
     }));
   }, []);
+  const mergeSeries = useCallback((loaded, failed) => {
+    if (!loaded.length && !failed.length) return;
+    for (const r of loaded) pendingSeries.current.set(siteKey(r), { data: r.data, loading: false, error: undefined });
+    for (const r of failed) pendingSeries.current.set(siteKey(r), { data: [], loading: false, error: r.error });
+    if (!flushTimer.current) flushTimer.current = setTimeout(flushSeries, 400);
+  }, [flushSeries]);
+  useEffect(() => () => clearTimeout(flushTimer.current), []);
 
   const analyticsParams = useMemo(() => {
     const params = { startDate, endDate };
@@ -181,18 +192,26 @@ export default function Dashboard() {
     return params;
   }, [startDate, endDate, isHourly, geoFilter, queryKeyword]);
 
-  const fetchAnalytics = useCallback(async () => {
+  // The site list (one GSC sites.list call per account) only changes when sites
+  // or accounts do — changing the date range or filters reuses it.
+  const siteListCache = useRef(null);
+  const fetchAnalytics = useCallback(async ({ refreshSites = false } = {}) => {
     const requestId = ++analyticsRequestId.current;
     const isLatest = () => requestId === analyticsRequestId.current;
-    setLoadingCharts(true);
 
     let sites;
     try {
-      const res = await api.get('/api/analytics/sites');
-      if (!isLatest()) return;
-      sites = res.data.sites || [];
-      if (res.data.errors?.length) {
-        showToast(`Failed to load sites for ${res.data.errors.map(e => e.accountEmail).join(', ')}`);
+      if (siteListCache.current && !refreshSites) {
+        sites = siteListCache.current;
+      } else {
+        setLoadingCharts(true);
+        const res = await api.get('/api/analytics/sites');
+        if (!isLatest()) return;
+        sites = res.data.sites || [];
+        siteListCache.current = sites;
+        if (res.data.errors?.length) {
+          showToast(`Failed to load sites for ${res.data.errors.map(e => e.accountEmail).join(', ')}`);
+        }
       }
     } catch (err) {
       if (!isLatest()) return;
@@ -215,6 +234,9 @@ export default function Dashboard() {
     loadedParamsKey.current = paramsKey;
 
     // Render every card right away (loading state), then fill them in
+    clearTimeout(flushTimer.current);
+    flushTimer.current = null;
+    pendingSeries.current = new Map();
     setAnalytics(sites.map(s => keep.get(siteKey(s)) || { ...s, data: [], loading: true }));
     setLoadingCharts(false);
 
@@ -224,10 +246,14 @@ export default function Dashboard() {
       onResults:   mergeSeries,
       isCancelled: () => !isLatest(),
       getPriority: () => priorityRef.current,
-    }).then(() => { if (isLatest()) setAnalyticsLoadedOnce(true); });
+    }).then(() => {
+      if (!isLatest()) return;
+      flushSeries();
+      setAnalyticsLoadedOnce(true);
+    });
 
     return sites;
-  }, [analyticsParams, mergeSeries]);
+  }, [analyticsParams, mergeSeries, flushSeries]);
 
   // Manual retry for a card whose data failed to load
   const retrySite = useCallback((site) => {
@@ -283,22 +309,32 @@ export default function Dashboard() {
     const today = new Date().toISOString().slice(0, 10);
     const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
     const sites = analyticsRef.current.map(({ accountId, siteUrl }) => ({ accountId, siteUrl }));
+    // Buffered like the analytics updates to avoid a re-render per batch
+    let fresh = {};
+    let timer = null;
+    const flush = () => {
+      clearTimeout(timer);
+      timer = null;
+      if (!Object.keys(fresh).length) return;
+      const update = fresh;
+      fresh = {};
+      setFreshness(prev => ({ ...prev, ...update }));
+    };
     loadSeriesProgressive({
       sites,
       params:      { startDate: yesterday, endDate: today, hourly: true },
       isCancelled: () => false,
       getPriority: () => priorityRef.current,
       onResults:   (loaded) => {
-        const fresh = {};
         for (const site of loaded) {
           if (site.data?.length > 0) {
             const sorted = [...site.data].sort((a, b) => b.date.localeCompare(a.date));
             fresh[siteKey(site)] = sorted[0].date;
           }
         }
-        if (Object.keys(fresh).length) setFreshness(prev => ({ ...prev, ...fresh }));
+        if (!timer) timer = setTimeout(flush, 1000);
       },
-    });
+    }).then(flush);
   }, [analyticsLoadedOnce]);
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
@@ -421,7 +457,7 @@ export default function Dashboard() {
   const handleDisconnect = async (id) => {
     await api.delete(`/api/accounts/${id}`);
     await fetchAccounts();
-    await fetchAnalytics();
+    await fetchAnalytics({ refreshSites: true });
     showToast('Account disconnected.');
   };
 
@@ -467,93 +503,100 @@ export default function Dashboard() {
   // ── Filtered analytics ────────────────────────────────────────────────────
   // "All Sites" (null) = show everything from all accounts, no filter
   // Custom dashboard = filter to dashboard's site list
-  const displayedAnalytics = activeDashboardId
-    ? (() => {
-        const db = dashboards.find(d => d.id === activeDashboardId);
-        if (!db) return [];
-        return analytics.filter(a =>
-          db.sites.some(s => String(s.connected_account_id) === String(a.accountId) && s.site_url === a.siteUrl)
-        );
-      })()
-    : analytics;
-
-  // Detect duplicate domains across different accounts
-  const duplicateDomains = (() => {
-    const domainAccounts = new Map(); // normalized domain → Set of accountIds
+  // Detect duplicate domains across different accounts.
+  // Depends on the site list only, so the arrays stay stable while data loads.
+  const duplicateDomains = useMemo(() => {
+    const analytics = analyticsRef.current;
+    const byDomain = new Map(); // normalized domain → sites
     for (const a of analytics) {
       const domain = shortUrl(a.siteUrl);
-      if (!domainAccounts.has(domain)) domainAccounts.set(domain, new Set());
-      domainAccounts.get(domain).add(String(a.accountId));
+      if (!byDomain.has(domain)) byDomain.set(domain, []);
+      byDomain.get(domain).push(a);
     }
     const dupes = new Map(); // "accountId:siteUrl" → [other account emails]
-    for (const a of analytics) {
-      const domain = shortUrl(a.siteUrl);
-      const accounts = domainAccounts.get(domain);
-      if (accounts && accounts.size > 1) {
-        const otherEmails = analytics
-          .filter(o => shortUrl(o.siteUrl) === domain && String(o.accountId) !== String(a.accountId))
+    for (const group of byDomain.values()) {
+      if (new Set(group.map(a => String(a.accountId))).size < 2) continue;
+      for (const a of group) {
+        const otherEmails = group
+          .filter(o => String(o.accountId) !== String(a.accountId))
           .map(o => o.accountEmail);
         dupes.set(`${a.accountId}:${a.siteUrl}`, [...new Set(otherEmails)]);
       }
     }
     return dupes;
-  })();
+  }, [siteListKey]);
 
-  // Deduplicate sc-domain: vs https:// for the same account+domain
-  const deduplicatedAnalytics = (() => {
-    const seen = new Map(); // "accountId:normalizedDomain" → entry
-    for (const a of displayedAnalytics) {
-      const key = `${a.accountId}:${shortUrl(a.siteUrl)}`;
-      const existing = seen.get(key);
-      if (!existing) {
-        seen.set(key, a);
-      } else {
-        // Prefer sc-domain: version (covers all subdomains)
-        if (a.siteUrl.startsWith('sc-domain:')) seen.set(key, a);
+  // Filter/sort chain — memoized so unrelated state changes don't redo it
+  const { displayedAnalytics, searchedAnalytics } = useMemo(() => {
+    const displayedAnalytics = activeDashboardId
+      ? (() => {
+          const db = dashboards.find(d => d.id === activeDashboardId);
+          if (!db) return [];
+          return analytics.filter(a =>
+            db.sites.some(s => String(s.connected_account_id) === String(a.accountId) && s.site_url === a.siteUrl)
+          );
+        })()
+      : analytics;
+
+
+    // Deduplicate sc-domain: vs https:// for the same account+domain
+    const deduplicatedAnalytics = (() => {
+      const seen = new Map(); // "accountId:normalizedDomain" → entry
+      for (const a of displayedAnalytics) {
+        const key = `${a.accountId}:${shortUrl(a.siteUrl)}`;
+        const existing = seen.get(key);
+        if (!existing) {
+          seen.set(key, a);
+        } else {
+          // Prefer sc-domain: version (covers all subdomains)
+          if (a.siteUrl.startsWith('sc-domain:')) seen.set(key, a);
+        }
       }
-    }
-    return [...seen.values()];
-  })();
+      return [...seen.values()];
+    })();
 
-  const queryFiltered = queryFilterMatches
-    ? deduplicatedAnalytics.filter(a => queryFilterMatches.has(`${a.accountId}:${a.siteUrl}`))
-    : deduplicatedAnalytics;
+    const queryFiltered = queryFilterMatches
+      ? deduplicatedAnalytics.filter(a => queryFilterMatches.has(`${a.accountId}:${a.siteUrl}`))
+      : deduplicatedAnalytics;
 
-  const safetyFiltered = safetyFilter === 'threats'
-    ? queryFiltered.filter(a => safetyStatus[`${a.accountId}:${a.siteUrl}`]?.status === 'threat')
-    : queryFiltered;
+    const safetyFiltered = safetyFilter === 'threats'
+      ? queryFiltered.filter(a => safetyStatus[`${a.accountId}:${a.siteUrl}`]?.status === 'threat')
+      : queryFiltered;
 
-  const filteredAnalytics = applyTrendFilter(
-    applyMetricFilters(
-      siteSearch
-        ? safetyFiltered.filter(a => shortUrl(a.siteUrl).toLowerCase().includes(siteSearch.toLowerCase()))
-        : safetyFiltered,
-      metricFilters
-    ),
-    trendFilter
-  );
+    const filteredAnalytics = applyTrendFilter(
+      applyMetricFilters(
+        siteSearch
+          ? safetyFiltered.filter(a => shortUrl(a.siteUrl).toLowerCase().includes(siteSearch.toLowerCase()))
+          : safetyFiltered,
+        metricFilters
+      ),
+      trendFilter
+    );
 
-  const searchedAnalytics = (() => {
-    if (!sortBy.metric) return filteredAnalytics;
-    const agg = (site) => {
-      const rows = site.data || [];
-      if (!rows.length) return { clicks: 0, impressions: 0, ctr: 0, position: 0 };
-      const s = rows.reduce((a, r) => ({
-        clicks: a.clicks + (r.clicks || 0),
-        impressions: a.impressions + (r.impressions || 0),
-        ctr: a.ctr + (r.ctr || 0),
-        position: a.position + (r.position || 0),
-      }), { clicks: 0, impressions: 0, ctr: 0, position: 0 });
-      s.ctr = s.ctr / rows.length;
-      s.position = s.position / rows.length;
-      return s;
-    };
-    return [...filteredAnalytics].sort((a, b) => {
-      const va = agg(a)[sortBy.metric];
-      const vb = agg(b)[sortBy.metric];
-      return sortBy.dir === 'desc' ? vb - va : va - vb;
-    });
-  })();
+    const searchedAnalytics = (() => {
+      if (!sortBy.metric) return filteredAnalytics;
+      const agg = (site) => {
+        const rows = site.data || [];
+        if (!rows.length) return { clicks: 0, impressions: 0, ctr: 0, position: 0 };
+        const s = rows.reduce((a, r) => ({
+          clicks: a.clicks + (r.clicks || 0),
+          impressions: a.impressions + (r.impressions || 0),
+          ctr: a.ctr + (r.ctr || 0),
+          position: a.position + (r.position || 0),
+        }), { clicks: 0, impressions: 0, ctr: 0, position: 0 });
+        s.ctr = s.ctr / rows.length;
+        s.position = s.position / rows.length;
+        return s;
+      };
+      return [...filteredAnalytics].sort((a, b) => {
+        const va = agg(a)[sortBy.metric];
+        const vb = agg(b)[sortBy.metric];
+        return sortBy.dir === 'desc' ? vb - va : va - vb;
+      });
+    })();
+
+    return { displayedAnalytics, searchedAnalytics };
+  }, [analytics, activeDashboardId, dashboards, queryFilterMatches, safetyFilter, safetyStatus, siteSearch, metricFilters, trendFilter, sortBy]);
 
   const hasSelectedSites = searchedAnalytics.some(s => s.data?.length > 0);
   const sitesWithData = searchedAnalytics.filter(s => s.data?.length > 0);
@@ -1167,7 +1210,7 @@ export default function Dashboard() {
         <AddSiteModal
           accounts={accounts}
           onClose={() => setShowAddSite(false)}
-          onSuccess={() => { fetchAccounts(); fetchAnalytics().then(sites => { if (sites) runSafetyCheck(sites); }); }}
+          onSuccess={() => { fetchAccounts(); fetchAnalytics({ refreshSites: true }).then(sites => { if (sites) runSafetyCheck(sites); }); }}
           onReconnect={handleReconnect}
         />
       )}
