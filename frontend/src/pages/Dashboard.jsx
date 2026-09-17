@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { addAccount, removeAccount, switchAccount, removeAllAccounts, getOtherAccounts } from '../utils/accountManager';
 import TrafficChart, { METRIC_COLOR, METRIC_LABEL, ALL_METRICS } from '../components/TrafficChart';
 import DateRangePicker from '../components/DateRangePicker';
 import useDateRangeParams from '../utils/useDateRangeParams';
+import { loadSeriesProgressive, siteKey } from '../utils/progressiveAnalytics';
 import MetricFilter, { applyMetricFilters } from '../components/MetricFilter';
 import TrendFilter, { applyTrendFilter } from '../components/TrendFilter';
 import QueryFilter from '../components/QueryFilter';
@@ -77,6 +78,9 @@ export default function Dashboard() {
   const [analytics,     setAnalytics]     = useState([]);
   const [startDate, endDate, setDateRange] = useDateRangeParams(28);
   const [loadingCharts, setLoadingCharts] = useState(false);
+  const [analyticsLoadedOnce, setAnalyticsLoadedOnce] = useState(false);
+  const analyticsRef = useRef(analytics);
+  analyticsRef.current = analytics;
   const [toast,         setToast]         = useState('');
   const [freshness,     setFreshness]     = useState({}); // { siteUrl: lastHourlyTimestamp }
   const [siteNotes,     setSiteNotes]     = useState(new Set()); // "accountId:siteUrl" with notes
@@ -154,28 +158,90 @@ export default function Dashboard() {
   // Only the latest request may update the charts: a slow response for an
   // older range (e.g. 28 days) must not overwrite a newer one (e.g. 24 hours).
   const analyticsRequestId = useRef(0);
+  // Sites of the active dashboard load first
+  const priorityRef = useRef(null);
+  const loadedParamsKey = useRef(null);
+
+  const mergeSeries = useCallback((loaded, failed) => {
+    if (!loaded.length && !failed.length) return;
+    const updates = new Map();
+    for (const r of loaded) updates.set(siteKey(r), { data: r.data, loading: false, error: undefined });
+    for (const r of failed) updates.set(siteKey(r), { data: [], loading: false, error: r.error });
+    setAnalytics(prev => prev.map(a => {
+      const u = updates.get(siteKey(a));
+      return u ? { ...a, ...u } : a;
+    }));
+  }, []);
+
+  const analyticsParams = useMemo(() => {
+    const params = { startDate, endDate };
+    if (isHourly) params.hourly = true;
+    if (geoFilter.length) params.countries = geoFilter;
+    if (queryKeyword) params.query = queryKeyword;
+    return params;
+  }, [startDate, endDate, isHourly, geoFilter, queryKeyword]);
+
   const fetchAnalytics = useCallback(async () => {
     const requestId = ++analyticsRequestId.current;
     const isLatest = () => requestId === analyticsRequestId.current;
     setLoadingCharts(true);
+
+    let sites;
     try {
-      const params = { startDate, endDate };
-      if (isHourly) params.hourly = 'true';
-      if (geoFilter.length) params.countries = geoFilter.join(',');
-      if (queryKeyword) params.query = queryKeyword;
-      const res = await api.get('/api/analytics', { params });
+      const res = await api.get('/api/analytics/sites');
       if (!isLatest()) return;
-      const results = res.data.results || [];
-      setAnalytics(results);
-      return results;
+      sites = res.data.sites || [];
+      if (res.data.errors?.length) {
+        showToast(`Failed to load sites for ${res.data.errors.map(e => e.accountEmail).join(', ')}`);
+      }
     } catch (err) {
       if (!isLatest()) return;
       // Don't keep showing data for the previous range as if it were current
       setAnalytics([]);
+      setLoadingCharts(false);
       showToast(err.response?.data?.error || 'Failed to load analytics');
+      return;
     }
-    finally { if (isLatest()) setLoadingCharts(false); }
-  }, [startDate, endDate, isHourly, geoFilter, queryKeyword]);
+
+    // Same filters as the data already on screen (e.g. a refetch after saving a
+    // dashboard): keep what loaded successfully, fetch only the rest.
+    const paramsKey = JSON.stringify(analyticsParams);
+    const keep = new Map();
+    if (loadedParamsKey.current === paramsKey) {
+      for (const a of analyticsRef.current) {
+        if (!a.loading && !a.error) keep.set(siteKey(a), a);
+      }
+    }
+    loadedParamsKey.current = paramsKey;
+
+    // Render every card right away (loading state), then fill them in
+    setAnalytics(sites.map(s => keep.get(siteKey(s)) || { ...s, data: [], loading: true }));
+    setLoadingCharts(false);
+
+    loadSeriesProgressive({
+      sites:       sites.filter(s => !keep.has(siteKey(s))),
+      params:      analyticsParams,
+      onResults:   mergeSeries,
+      isCancelled: () => !isLatest(),
+      getPriority: () => priorityRef.current,
+    }).then(() => { if (isLatest()) setAnalyticsLoadedOnce(true); });
+
+    return sites;
+  }, [analyticsParams, mergeSeries]);
+
+  // Manual retry for a card whose data failed to load
+  const retrySite = useCallback((site) => {
+    const requestId = analyticsRequestId.current;
+    setAnalytics(prev => prev.map(a =>
+      siteKey(a) === siteKey(site) ? { ...a, loading: true, error: undefined } : a
+    ));
+    loadSeriesProgressive({
+      sites:       [site],
+      params:      analyticsParams,
+      onResults:   mergeSeries,
+      isCancelled: () => requestId !== analyticsRequestId.current,
+    });
+  }, [analyticsParams, mergeSeries]);
 
   useEffect(() => { fetchAccounts(); fetchDashboards(); }, [fetchAccounts, fetchDashboards]);
   useEffect(() => {
@@ -208,23 +274,32 @@ export default function Dashboard() {
   }, []);
   useEffect(() => { fetchNotesList(); }, [fetchNotesList]);
 
-  // Fetch hourly freshness data once on mount (for "Updated X ago")
+  // Fetch hourly freshness data once (for "Updated X ago") — only after the
+  // first analytics load finished, so both don't compete for the GSC quota.
+  const freshnessRequested = useRef(false);
   useEffect(() => {
+    if (!analyticsLoadedOnce || freshnessRequested.current) return;
+    freshnessRequested.current = true;
     const today = new Date().toISOString().slice(0, 10);
     const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-    api.get('/api/analytics', { params: { startDate: yesterday, endDate: today, hourly: 'true' } })
-      .then(res => {
+    const sites = analyticsRef.current.map(({ accountId, siteUrl }) => ({ accountId, siteUrl }));
+    loadSeriesProgressive({
+      sites,
+      params:      { startDate: yesterday, endDate: today, hourly: true },
+      isCancelled: () => false,
+      getPriority: () => priorityRef.current,
+      onResults:   (loaded) => {
         const fresh = {};
-        for (const site of res.data.results || []) {
+        for (const site of loaded) {
           if (site.data?.length > 0) {
             const sorted = [...site.data].sort((a, b) => b.date.localeCompare(a.date));
-            fresh[`${site.accountId}:${site.siteUrl}`] = sorted[0].date;
+            fresh[siteKey(site)] = sorted[0].date;
           }
         }
-        setFreshness(fresh);
-      })
-      .catch(() => {});
-  }, []);
+        if (Object.keys(fresh).length) setFreshness(prev => ({ ...prev, ...fresh }));
+      },
+    });
+  }, [analyticsLoadedOnce]);
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
   // ── Safety: load cached status, then auto-recheck if stale ──────────────
@@ -258,9 +333,13 @@ export default function Dashboard() {
       .catch(() => {});
   }, []);
 
-  // Auto-recheck: on load if stale, and whenever new (unchecked) sites appear
+  // Auto-recheck: on load if stale, and whenever new (unchecked) sites appear.
+  // Depends on the site list only — not on series data, which arrives in many
+  // small updates and would otherwise re-trigger the check each time.
   const safetyAutoChecked = useRef(false);
+  const siteListKey = useMemo(() => analytics.map(siteKey).join('\n'), [analytics]);
   useEffect(() => {
+    const analytics = analyticsRef.current;
     if (analytics.length === 0) return;
     const SIX_HOURS = 6 * 60 * 60 * 1000;
     const now = Date.now();
@@ -283,7 +362,7 @@ export default function Dashboard() {
         runSafetyCheck(analytics);
       }
     }
-  }, [analytics, safetyStatus, runSafetyCheck]);
+  }, [siteListKey, safetyStatus, runSafetyCheck]);
 
   // ── Dashboard CRUD ────────────────────────────────────────────────────────
   const openCreateForm = () => {
@@ -379,6 +458,11 @@ export default function Dashboard() {
     removeAllAccounts();
     navigate('/', { replace: true });
   };
+
+  useEffect(() => {
+    const db = dashboards.find(d => d.id === activeDashboardId);
+    priorityRef.current = db ? new Set(db.sites.map(s => `${s.connected_account_id}:${s.site_url}`)) : null;
+  }, [dashboards, activeDashboardId]);
 
   // ── Filtered analytics ────────────────────────────────────────────────────
   // "All Sites" (null) = show everything from all accounts, no filter
@@ -542,6 +626,7 @@ export default function Dashboard() {
   const handleExportExcel = async () => {
     setShowExportMenu(false);
     if (!searchedAnalytics.length) { showToast('No data to export'); return; }
+    if (searchedAnalytics.some(s => s.loading)) { showToast('Data is still loading — try again in a moment'); return; }
 
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
@@ -997,6 +1082,7 @@ export default function Dashboard() {
                   globalMetricVer={globalMetricVer}
                   darkMode={darkMode}
                   freshTimestamp={freshness[`${site.accountId}:${site.siteUrl}`]}
+                  onRetry={retrySite}
                   hasNote={siteNotes.has(`${site.accountId}:${site.siteUrl}`)}
                   onNoteChange={fetchNotesList}
                   safetyStatus={safetyStatus[`${site.accountId}:${site.siteUrl}`]}

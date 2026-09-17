@@ -142,7 +142,7 @@ function MultiTooltip({ active, payload, label, granularity }) {
   );
 }
 
-export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange, safetyStatus, duplicateIn }) {
+export default function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange, safetyStatus, duplicateIn, onRetry }) {
 
   // Local metrics state — defaults to globalMetrics, resets when global changes
   const [localMetrics, setLocalMetrics] = useState(globalMetrics || ['clicks']);
@@ -173,12 +173,16 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
     { clicks: 0, impressions: 0, ctr: 0, position: 0 }
   );
 
-  const stats = {
-    clicks:      fmtCompact(totals.clicks),
-    impressions: fmtCompact(totals.impressions),
-    ctr:         formatVal('ctr',      totals.ctr / n),
-    position:    formatVal('position', totals.position / n),
-  };
+  // Not loaded (yet) is not the same as zero
+  const unknown = site.loading || (!hasData && site.error);
+  const stats = unknown
+    ? { clicks: '—', impressions: '—', ctr: '—', position: '—' }
+    : {
+        clicks:      fmtCompact(totals.clicks),
+        impressions: fmtCompact(totals.impressions),
+        ctr:         formatVal('ctr',      totals.ctr / n),
+        position:    formatVal('position', totals.position / n),
+      };
 
   const toggleLocalMetric = (m) => {
     setLocalMetrics(prev => {
@@ -281,8 +285,41 @@ export default function TrafficChart({ site, granularity = 'day', globalMetrics,
         </div>
       </div>
 
+      {/* Loading */}
+      {!hasData && site.loading && (
+        <div className="flex items-center justify-center h-32 text-sm text-gray-400 gap-2">
+          <svg className="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+          Loading…
+        </div>
+      )}
+
+      {/* Load error — GSC rejected the request (quota, permissions…), not a real zero */}
+      {!hasData && !site.loading && site.error && (
+        <div className="flex flex-col items-center justify-center h-32 px-4 text-sm text-amber-600 dark:text-amber-400 gap-2 text-center">
+          <span className="flex items-center gap-2" title={site.error}>
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            Failed to load data from Search Console
+          </span>
+          <span className="text-xs text-gray-400 max-w-full truncate" title={site.error}>{site.error}</span>
+          {onRetry && (
+            <button
+              onClick={() => onRetry(site)}
+              className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
+
       {/* No data */}
-      {!hasData && (
+      {!hasData && !site.loading && !site.error && (
         <div className="flex items-center justify-center h-32 text-sm text-gray-400 gap-2">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

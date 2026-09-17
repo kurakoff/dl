@@ -23,14 +23,38 @@ async function getClientForAccount(account) {
 
   // Refresh proactively if token expires in < 60 s
   if (account.refresh_token && account.token_expiry && Date.now() > account.token_expiry - 60_000) {
+    const credentials = await refreshOnce(client, account);
+    client.setCredentials({ ...credentials, refresh_token: credentials.refresh_token || account.refresh_token });
+  }
+
+  return client;
+}
+
+// Concurrent requests for the same account share a single token refresh
+// instead of each hitting Google's token endpoint at once.
+const pendingRefresh = new Map(); // accountId -> Promise<credentials>
+
+function refreshOnce(client, account) {
+  if (pendingRefresh.has(account.id)) return pendingRefresh.get(account.id);
+
+  const p = (async () => {
+    // Another request may have refreshed it already
+    const fresh = getDb().prepare(
+      'SELECT access_token, token_expiry FROM connected_accounts WHERE id = ?'
+    ).get(account.id);
+    if (fresh && fresh.token_expiry && Date.now() < fresh.token_expiry - 60_000) {
+      return { access_token: fresh.access_token, expiry_date: fresh.token_expiry };
+    }
     const { credentials } = await client.refreshAccessToken();
     getDb().prepare(
       'UPDATE connected_accounts SET access_token = ?, token_expiry = ? WHERE id = ?'
     ).run(credentials.access_token, credentials.expiry_date, account.id);
-    client.setCredentials(credentials);
-  }
+    return credentials;
+  })();
 
-  return client;
+  pendingRefresh.set(account.id, p);
+  p.finally(() => pendingRefresh.delete(account.id)).catch(() => {});
+  return p;
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
