@@ -179,7 +179,7 @@ function useNearViewport(ref) {
 
 export default memo(TrafficChart);
 
-function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange, safetyStatus, duplicateIn, onRetry }) {
+function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVer, darkMode, freshTimestamp, hasNote, onNoteChange, safetyStatus, duplicateIn, onRetry, detailQuery }) {
   const cardRef = useRef(null);
   const nearViewport = useNearViewport(cardRef);
 
@@ -280,7 +280,7 @@ function TrafficChart({ site, granularity = 'day', globalMetrics, globalMetricVe
               <span className="text-[11px] text-gray-400">Updated {updatedAgo}</span>
             )}
             <a
-              href={`/site/${site.accountId}/${encodeURIComponent(site.siteUrl)}`}
+              href={`/site/${site.accountId}/${encodeURIComponent(site.siteUrl)}${detailQuery ? `?${detailQuery}` : ''}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"

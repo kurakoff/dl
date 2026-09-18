@@ -184,6 +184,14 @@ export default function Dashboard() {
   }, [flushSeries]);
   useEffect(() => () => clearTimeout(flushTimer.current), []);
 
+  // Details opens the site with the same period (and country) as the dashboard,
+  // so switching between sites keeps the filter that is being analysed.
+  const detailQuery = useMemo(() => {
+    const q = new URLSearchParams({ from: startDate, to: endDate });
+    if (geoFilter.length === 1) q.set('country', geoFilter[0]);
+    return q.toString();
+  }, [startDate, endDate, geoFilter]);
+
   const analyticsParams = useMemo(() => {
     const params = { startDate, endDate };
     if (isHourly) params.hourly = true;
@@ -1126,6 +1134,7 @@ export default function Dashboard() {
                   darkMode={darkMode}
                   freshTimestamp={freshness[`${site.accountId}:${site.siteUrl}`]}
                   onRetry={retrySite}
+                  detailQuery={detailQuery}
                   hasNote={siteNotes.has(`${site.accountId}:${site.siteUrl}`)}
                   onNoteChange={fetchNotesList}
                   safetyStatus={safetyStatus[`${site.accountId}:${site.siteUrl}`]}

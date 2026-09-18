@@ -927,7 +927,11 @@ export default function SiteDetail() {
 
   // Dimension filters — multiple simultaneous (like GSC)
   // { country: 'deu', device: 'MOBILE', query: '...', page: '...' }
-  const [dimFilters, setDimFilters] = useState({});
+  // ?country=… comes from the dashboard's GEO filter via the Details link
+  const [dimFilters, setDimFilters] = useState(() => {
+    const country = new URLSearchParams(window.location.search).get('country');
+    return country ? { country } : {};
+  });
 
   // Toast
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
@@ -1151,6 +1155,9 @@ export default function SiteDetail() {
 
     Promise.all(allDims.map(async ([tabName, dim]) => {
       const params = { accountId, siteUrl, startDate, endDate, dimension: dim };
+      // Today's rows are not final yet — without this the tables stay empty for
+      // a "last 24 hours" range while the chart already shows traffic.
+      if (isHourly) params.dataState = 'all';
       const applicable = Object.fromEntries(
         Object.entries(dimFilters).filter(([d]) => d !== dim)
       );
@@ -1172,7 +1179,7 @@ export default function SiteDetail() {
       .finally(() => { if (!cancelled) setTabLoading(false); });
 
     return () => { cancelled = true; };
-  }, [accountId, siteUrl, startDate, endDate, filtersKey]);
+  }, [accountId, siteUrl, startDate, endDate, filtersKey, isHourly]);
 
   // Chart data — skip aggregation for hourly, sort by timestamp
   const effectiveGranularity = isHourly ? 'hour' : granularity;
