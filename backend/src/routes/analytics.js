@@ -275,6 +275,7 @@ router.get('/site-detail', async (req, res) => {
   const sc = google.searchconsole({ version: 'v1', auth: client });
 
   const LIMITS = { query: 25, page: 25, country: 30, device: 10 };
+  const DATA_STATES = ['final', 'all', 'hourly_all'];
 
   try {
     const requestBody = {
@@ -284,6 +285,11 @@ router.get('/site-detail', async (req, res) => {
       rowLimit:   LIMITS[dimension] || 25,
       orderBy:    [{ fieldName: 'clicks', sortOrder: 'DESCENDING' }],
     };
+    // Today's data is not final yet: without this the tables are empty for a
+    // "last 24 hours" range while the chart (hourly) shows traffic.
+    if (DATA_STATES.includes(req.query.dataState)) {
+      requestBody.dataState = req.query.dataState;
+    }
 
     // Parse multi-dimension filters
     let filters = {};
