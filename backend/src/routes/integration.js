@@ -156,7 +156,14 @@ router.post('/stats-24h', async (req, res) => {
   res.json({
     results,
     period: last24hBody(),
-    index: { builtAt: new Date(idx.builtAt).toISOString(), domains: idx.map.size, accountErrors: idx.errors.length },
+    index: {
+      builtAt: new Date(idx.builtAt).toISOString(),
+      domains: idx.map.size,
+      accountErrors: idx.errors.length,
+      // какие аккаунты не отдали список ресурсов: их домены выглядят как
+      // «не подключены», хотя на деле просто протух токен
+      failedAccounts: idx.errors.map(e => ({ account: e.account, error: String(e.error || '').slice(0, 200) })),
+    },
   });
 });
 
