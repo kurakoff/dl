@@ -916,8 +916,12 @@ export default function SiteDetail() {
   const [siteData, setSiteData]       = useState(null);
   const [loadingChart, setLoadingChart] = useState(true);
 
-  // Metrics toggle
-  const [activeMetrics, setActiveMetrics] = useState(['clicks']);
+  // Metrics toggle — ?metrics=… comes from the card's pills via Details
+  const [activeMetrics, setActiveMetrics] = useState(() => {
+    const fromUrl = (new URLSearchParams(window.location.search).get('metrics') || '')
+      .split(',').filter(m => ALL_METRICS.includes(m));
+    return fromUrl.length ? fromUrl : ['clicks'];
+  });
 
   // Tabs
   const [tab, setTab]       = useState('Queries');
