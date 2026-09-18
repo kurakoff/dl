@@ -119,6 +119,8 @@ async function statsFor(candidates) {
       const rows = data.rows || [];
       return {
         connected:   true,
+        // id нужен для ссылки на карточку сайта в дашборде: /site/<accountId>/<property>
+        accountId:   account.id,
         account:     account.email,
         property:    siteUrl,
         clicks:      rows.reduce((s, r) => s + (r.clicks || 0), 0),
