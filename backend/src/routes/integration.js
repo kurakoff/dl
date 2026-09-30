@@ -169,4 +169,34 @@ router.post('/stats-24h', async (req, res) => {
   });
 });
 
+// ── export for the zavod migration ─────────────────────────────────────────
+// GET /api/integration/export — everything zavod needs to take over the
+// dashboard: dashboard users (no password hashes), connected Google accounts
+// WITH their OAuth tokens, dashboards and their sites, notes, safe-browsing and
+// canonicals caches, pending DNS verifications. zavod pulls it repeatedly until
+// the cutover (idempotent upserts by these ids), so users can keep working here.
+// Same service-token protection as the rest of this router.
+router.get('/export', (_req, res) => {
+  try {
+    const db = getDb();
+    const all = (sql) => db.prepare(sql).all();
+    const has = (table) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
+    res.json({
+      exportedAt: new Date().toISOString(),
+      users: all('SELECT id, email, name, created_at FROM users'),
+      accounts: all(`SELECT id, user_id, google_id, email, name, picture, access_token, refresh_token,
+                            token_expiry, created_at, has_indexing_scope, has_siteverification_scope
+                     FROM connected_accounts`),
+      dashboards: all('SELECT id, user_id, name, created_at FROM dashboards'),
+      dashboardSites: all('SELECT id, dashboard_id, connected_account_id, site_url FROM dashboard_sites'),
+      notes: has('site_notes') ? all('SELECT id, user_id, account_id, site_url, content, updated_at FROM site_notes') : [],
+      safety: has('safe_browsing_cache') ? all('SELECT account_id, site_url, status, threat_types, checked_at FROM safe_browsing_cache') : [],
+      canonicals: has('canonicals_cache') ? all('SELECT connected_account_id, site_url, page_url, user_canonical, google_canonical, checked_at FROM canonicals_cache') : [],
+      pending: has('pending_verifications') ? all('SELECT id, user_id, connected_account_id, domain, token, created_at FROM pending_verifications') : [],
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

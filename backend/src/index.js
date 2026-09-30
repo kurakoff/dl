@@ -47,19 +47,6 @@ app.use('/api/sitemaps',          require('./routes/sitemaps'));
 // machine API for zavod.guru — service token, not a user session
 app.use('/api/integration',       require('./routes/integration'));
 
-// Temporary: serve DB file for migration (remove after Coolify migration)
-app.get('/admin/db-export/migrate-2026-04', (req, res) => {
-  const fs = require('fs');
-  const path = require('path');
-  const { getDb } = require('./config/database');
-  const dbPath = path.resolve(process.env.DB_PATH || path.join(__dirname, '../data/app.db'));
-  getDb().pragma('wal_checkpoint(PASSIVE)');
-  const data = fs.readFileSync(dbPath);
-  res.set('Content-Type', 'application/octet-stream');
-  res.set('Content-Length', data.length);
-  res.send(data);
-});
-
 app.get('/health', (_req, res) => {
   try {
     const { getDb } = require('./config/database');
